@@ -1,0 +1,40 @@
+{
+  "name": "@melodysdad/pm-lambda-layer-utils",
+  "version": "1.0.0",
+  "description": "Shared utilities for Project Manager Lambda functions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melodysdad/project_manager_models.git",
+    "directory": "packages/lambda-layer"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublish": "npm run build"
+  },
+  "keywords": [
+    "project-manager",
+    "lambda",
+    "layer",
+    "utilities",
+    "cloudevents"
+  ],
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "^3.750.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

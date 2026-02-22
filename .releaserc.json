@@ -89,6 +89,12 @@
       {
         "pkgRoot": "packages/models"
       }
+    ],
+    [
+      "@semantic-release/npm",
+      {
+        "pkgRoot": "packages/lambda-layer"
+      }
     ]
   ]
 }
