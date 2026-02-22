@@ -1,10 +1,10 @@
-# Primitives
+# Primitives 
 
-## IMPORTANT
+## IMPORTANT 
 
-* Primitives in this document represent the core data model of this project
-* In the event that you are requested to build a service that needs a primitive that doesn't exist in this document you should reject the request and prompt the user to either redesign the service or create a new primitive in this document
-* Similarly, if you are requested to build a service that uses nonexistent fields or uses fields that are typed differently than described in this document you should also reject the request and prompt the user for changes
+* Primitives in this document represent the core data model of this project   
+* In the event that you are requested to build a service that needs a primitive that doesn't exist in this document you should reject the request and prompt the user to either redesign the service or create a new primitive in this document   
+* Similarly, if you are requested to build a service that uses nonexistent fields or uses fields that are typed differently than described in this document you should also reject the request and prompt the user for changes 
 
 ## Implementation Status
 
@@ -38,7 +38,6 @@ Represents a person, system, or AI that can participate in conversations, decisi
 * updated_at: timestamp
 
 ### Conversation
-
 Represents a conversation initiated by a human Actor
 
 #### Fields
@@ -53,7 +52,6 @@ Represents a conversation initiated by a human Actor
 - updated_at: timestamp
 
 ### ConversationCheckpoint
-
 An important point in the lifecycle of a conversation. A new checkpoint is created each time the LLM processes the conversation, with the summary field containing a versioned summary of the conversation state.
 
 #### Fields
@@ -69,21 +67,21 @@ An important point in the lifecycle of a conversation. A new checkpoint is creat
 - created_at: timestamp
 
 
-### Community
+### Community 
 
-Represents a group of Actors who participate in in conversations and tasks
+Represents a group of Actors who participate in in conversations and tasks 
 
-#### Fields
+#### Fields 
 
-* id: GUID
-* name: string
+* id: GUID  
+* name: string   
 * description?:string
 
 ### Tasks
 
 A commitment to perform work authorized by a ConversationCheckpoint
 
-#### Fields
+#### Fields 
 
 * id: GUID
 * conversation_id: GUID
@@ -98,9 +96,9 @@ An immutable record of task progress or completion.
 
 #### Fields
 
-* id: GUID
-* task_id: GUID
-* type: ENUM (WORK_STARTED | WORK_PAUSED | WORK_COMPLETED | WORK_REJECTED|WORK_APPROVED)
+* id: GUID  
+* task_id: GUID  
+* type: ENUM (WORK_STARTED | WORK_PAUSED | WORK_COMPLETED | WORK_REJECTED|WORK_APPROVED)  
 * created_at: timestamp
 
 ### Message
@@ -117,13 +115,13 @@ A contextual contribution from an Actor within a Conversation.
 * content: string
 * external_identity?: string
 
-### Interfaces
+### Interfaces 
 
 We will also need to create interfaces for services that receive and persist the primitives to be written to:
 
-ConversationStore
-MessageStore
-CheckpointStore
-TaskStore
+ConversationStore  
+MessageStore  
+CheckpointStore  
+TaskStore  
 CommunityStore
 ActorStore
