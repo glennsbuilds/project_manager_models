@@ -81,7 +81,7 @@ Represents a group of Actors who participate in in conversations and tasks
 
 A commitment to perform work authorized by a ConversationCheckpoint
 
-#### Fields 
+#### Fields
 
 * id: GUID
 * conversation_id: GUID
@@ -89,6 +89,10 @@ A commitment to perform work authorized by a ConversationCheckpoint
 * instructions: string
 * assigned_to?: GUID
 * created_at: timestamp
+* generated_artifacts?: {
+    response_text: string,
+    format?: 'markdown' | 'text'
+  }
 
 ### TaskCheckpoint
 
