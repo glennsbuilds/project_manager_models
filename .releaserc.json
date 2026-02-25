@@ -95,6 +95,12 @@
       {
         "pkgRoot": "packages/lambda-layer"
       }
+    ],
+    [
+      "@semantic-release/npm",
+      {
+        "pkgRoot": "packages/pipeline-cdk"
+      }
     ]
   ]
 }

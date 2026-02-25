@@ -5,8 +5,11 @@ import { parseTransitions } from "./transitionsParser.ts";
 import { generateInterfaces } from "./generateInterfaces.ts";
 import { generateSchemas } from "./generateSchemas.ts";
 import { generateCloudEvents } from "./generateCloudEvents.ts";
+import { parsePipeline } from "./pipelineParser.ts";
+import { generateStepFunction } from "./generateStepFunction.ts";
 
 const OUTPUT_DIR = resolve(import.meta.dirname, "../packages/models/src");
+const CDK_OUTPUT_DIR = resolve(import.meta.dirname, "../packages/pipeline-cdk/src");
 
 function ensureDirectory(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -42,11 +45,23 @@ function generate() {
   writeFileSync(cloudEventPath, cloudEventCode);
   console.log(`✓ Generated ${cloudEventPath}`);
 
+  console.log("\n🔍 Parsing contracts/services/conversation_pipeline.md...");
+  const pipeline = parsePipeline("contracts/services/conversation_pipeline.md");
+  console.log(`✓ Found pipeline: ${pipeline.metadata.name} (${pipeline.steps.length} steps, ${pipeline.branches.length} branches)`);
+
+  console.log("📝 Generating Step Function CDK construct...");
+  const cdkCode = generateStepFunction(pipeline);
+  const cdkPath = resolve(CDK_OUTPUT_DIR, "conversationPipeline.ts");
+  ensureDirectory(cdkPath);
+  writeFileSync(cdkPath, cdkCode);
+  console.log(`✓ Generated ${cdkPath}`);
+
   console.log("\n✅ Code generation complete!");
   console.log(`\nGenerated files:`);
   console.log(`  - packages/models/src/types.ts`);
   console.log(`  - packages/models/src/schemas.ts`);
   console.log(`  - packages/models/src/cloudEvents.ts`);
+  console.log(`  - packages/pipeline-cdk/src/conversationPipeline.ts`);
 }
 
 generate();

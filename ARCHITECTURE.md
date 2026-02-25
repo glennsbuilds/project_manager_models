@@ -7,8 +7,8 @@ This monorepo is the central contracts and code generation hub for the Project M
 The repo serves three purposes:
 
 1. **Contracts** — the source of truth for domain models, state transitions, service behaviors, and policies
-2. **Code generation** — parsers that read contracts and generate TypeScript types, Zod schemas, and CloudEvent utilities
-3. **Published packages** — three npm packages consumed by downstream Lambda services
+2. **Code generation** — parsers that read contracts and generate TypeScript types, Zod schemas, CloudEvent utilities, and CDK constructs
+3. **Published packages** — four npm packages consumed by downstream Lambda services and CDK stacks
 
 ## Project Structure
 
@@ -27,13 +27,15 @@ The repo serves three purposes:
 │       └── infrastructure.md        # AWS, CDK, messaging, storage
 │
 ├── src/                             # Code generation tools
-│   ├── generate.ts                  # Orchestrator — reads contracts, writes to packages/models/src/
+│   ├── generate.ts                  # Orchestrator — reads contracts, writes to packages/
 │   ├── parser.ts                    # PRIMITIVES.md parser
 │   ├── transitionsParser.ts         # TRANSITIONS.md parser
+│   ├── pipelineParser.ts            # conversation_pipeline.md YAML parser
 │   ├── typeConverter.ts             # Markdown types → TypeScript/Zod mapping
 │   ├── generateInterfaces.ts        # Generates types.ts
 │   ├── generateSchemas.ts           # Generates schemas.ts
-│   └── generateCloudEvents.ts       # Generates cloudEvents.ts
+│   ├── generateCloudEvents.ts       # Generates cloudEvents.ts
+│   └── generateStepFunction.ts      # Generates CDK Step Function construct
 │
 ├── packages/
 │   ├── models/                      # @melodysdad/pm-models (auto-generated)
@@ -49,10 +51,15 @@ The repo serves three purposes:
 │   │       ├── githubWebhookHandler.ts # GitHub-specific handler base
 │   │       └── index.ts
 │   │
-│   └── lambda-layer/               # @melodysdad/pm-lambda-layer-utils (hand-written)
+│   ├── lambda-layer/               # @melodysdad/pm-lambda-layer-utils (hand-written)
+│   │   └── src/
+│   │       ├── cloudEvents.ts       # publishCloudEvent() — EventBridge publishing with trace propagation
+│   │       ├── types.ts             # BusinessLogicInterface, HttpError
+│   │       └── index.ts
+│   │
+│   └── pipeline-cdk/               # @melodysdad/pm-pipeline-cdk (auto-generated)
 │       └── src/
-│           ├── cloudEvents.ts       # publishCloudEvent() — EventBridge publishing with trace propagation
-│           ├── types.ts             # BusinessLogicInterface, HttpError
+│           ├── conversationPipeline.ts  # CDK construct: Step Function + Lambdas
 │           └── index.ts
 │
 ├── ARCHITECTURE.md                  # This file
@@ -96,19 +103,27 @@ contracts/domain/PRIMITIVES.md + contracts/domain/TRANSITIONS.md
       ├── types.ts        — TypeScript interfaces from PRIMITIVES.md
       ├── schemas.ts      — Zod validators from PRIMITIVES.md
       └── cloudEvents.ts  — CloudEvent types + creators from TRANSITIONS.md
+
+contracts/services/conversation_pipeline.md
+    ↓
+    npm run generate  (src/generate.ts)
+    ↓
+    packages/pipeline-cdk/src/
+      └── conversationPipeline.ts  — CDK construct (StateMachine + Lambdas)
 ```
 
-The generator writes directly to `packages/models/src/`. There is no intermediate staging directory. Generated files are committed to git and published as part of the `@melodysdad/pm-models` package.
+The generator writes directly to package source directories. There is no intermediate staging directory. Generated files are committed to git and published as part of their respective packages.
 
 ## Published Packages
 
-All three packages are published to GitHub Packages (`npm.pkg.github.com`) via semantic-release on push to `main`.
+All four packages are published to GitHub Packages (`npm.pkg.github.com`) via semantic-release on push to `main`.
 
 | Package | npm Name | Source | Purpose |
 |---------|----------|--------|---------|
 | `packages/models` | `@melodysdad/pm-models` | Auto-generated from contracts | Domain types, Zod schemas, CloudEvent utilities |
 | `packages/handlers` | `@melodysdad/pm-transition-handlers` | Hand-written | Base handler classes for Lambda functions |
 | `packages/lambda-layer` | `@melodysdad/pm-lambda-layer-utils` | Hand-written | Shared Lambda utilities (EventBridge publishing, error types) |
+| `packages/pipeline-cdk` | `@melodysdad/pm-pipeline-cdk` | Auto-generated from contracts | CDK construct for conversation pipeline (Step Function + Lambdas) |
 
 ## System Overview
 
@@ -132,7 +147,7 @@ GitHub Webhook
 ## Development Workflow
 
 1. **Edit contracts** in `contracts/domain/`, `contracts/services/`, or `contracts/policies/`
-2. **Run `npm run generate`** to regenerate `packages/models/src/` from domain contracts
+2. **Run `npm run generate`** to regenerate `packages/models/src/` and `packages/pipeline-cdk/src/` from contracts
 3. **Commit** the contract changes and regenerated code
 4. **Push to `main`** — semantic-release analyzes commits, bumps versions, and publishes packages
 
@@ -140,5 +155,5 @@ GitHub Webhook
 
 - Use [conventional commits](https://www.conventionalcommits.org/) — see [RELEASING.md](RELEASING.md)
 - Domain contracts (PRIMITIVES, TRANSITIONS) are the single source of truth for data models
-- Generated code in `packages/models/src/` should never be hand-edited — regenerate instead
+- Generated code in `packages/models/src/` and `packages/pipeline-cdk/src/` should never be hand-edited — regenerate instead
 - All services consume `@melodysdad/pm-models` for types and `@melodysdad/pm-lambda-layer-utils` for shared Lambda utilities

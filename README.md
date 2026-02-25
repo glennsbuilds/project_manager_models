@@ -1,6 +1,6 @@
 # Project Manager Models
 
-Central contracts and code generation hub for the Project Manager system. This repo defines the domain model, service behaviors, and infrastructure policies — then generates TypeScript types, Zod validators, and CloudEvent utilities consumed by all downstream services.
+Central contracts and code generation hub for the Project Manager system. This repo defines the domain model, service behaviors, and infrastructure policies — then generates TypeScript types, Zod validators, CloudEvent utilities, and CDK constructs consumed by all downstream services.
 
 ## Quick Start
 
@@ -28,22 +28,26 @@ The `contracts/` directory is the source of truth for the entire system. Nothing
 
 ### Code Generation
 
-The generator reads `PRIMITIVES.md` and `TRANSITIONS.md` and produces typed code:
+The generator reads contracts and produces typed code:
 
 ```bash
 npm run generate
 ```
 
-This writes directly to `packages/models/src/`:
+This writes to `packages/models/src/`:
 - **types.ts** — TypeScript interfaces for all domain entities
 - **schemas.ts** — Zod validators with inferred types for runtime validation
 - **cloudEvents.ts** — CloudEvents v1.0 envelope, validator, and typed event creators
+
+And to `packages/pipeline-cdk/src/`:
+- **conversationPipeline.ts** — CDK construct defining the Step Function state machine, Lambda functions, and IAM grants
 
 ### Published Packages
 
 | Package | Description |
 |---------|-------------|
 | `@melodysdad/pm-models` | Domain types, Zod schemas, CloudEvent utilities (auto-generated) |
+| `@melodysdad/pm-pipeline-cdk` | CDK construct for conversation pipeline Step Function (auto-generated) |
 | `@melodysdad/pm-transition-handlers` | Base handler classes for Lambda functions (`TransitionHandler<T>`) |
 | `@melodysdad/pm-lambda-layer-utils` | Shared Lambda utilities (EventBridge publishing, error types) |
 
@@ -93,7 +97,7 @@ Defined in `contracts/domain/PRIMITIVES.md`:
 ## Development Workflow
 
 1. Edit contracts in `contracts/domain/`, `contracts/services/`, or `contracts/policies/`
-2. Run `npm run generate` to regenerate `packages/models/src/`
+2. Run `npm run generate` to regenerate `packages/models/src/` and `packages/pipeline-cdk/src/`
 3. Commit contract changes and regenerated code using [conventional commits](https://www.conventionalcommits.org/)
 4. Push to `main` — semantic-release handles versioning and publishing
 
