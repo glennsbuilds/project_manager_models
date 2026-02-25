@@ -37,5 +37,5 @@ const bus = events.EventBus.fromEventBusName(stack, "SharedBus", busName);
 new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
-  lambdaCode: lambda.Code.fromAsset(path.join(__dirname, "handlers")),
+  lambdaCode: lambda.Code.fromAsset(__dirname),
 });
