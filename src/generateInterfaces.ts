@@ -2,7 +2,7 @@ import { PrimitiveDefinition } from "./parser.ts";
 import { mapMarkdownTypeToTypeScript } from "./typeConverter.ts";
 
 export function generateInterfaces(primitives: PrimitiveDefinition[]): string {
-  let output = `// Auto-generated from contracts/PRIMITIVES.md
+  let output = `// Auto-generated from contracts/domain/PRIMITIVES.md
 // Do not edit manually
 
 `;

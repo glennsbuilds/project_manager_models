@@ -1,4 +1,4 @@
-// Auto-generated from contracts/PRIMITIVES.md
+// Auto-generated from contracts/domain/PRIMITIVES.md
 // Do not edit manually
 
 import { z } from "zod";
@@ -51,17 +51,6 @@ export const ConversationCheckpointSchema = z.object({
 export type ConversationCheckpoint = z.infer<typeof ConversationCheckpointSchema>;
 
 /**
- * Represents a group of Actors who participate in in conversations and tasks
- */
-export const CommunitySchema = z.object({
-  id: z.string().uuid(),
-  name: z.string(),
-  description: z.string().optional(),
-}).strict();
-
-export type Community = z.infer<typeof CommunitySchema>;
-
-/**
  * A commitment to perform work authorized by a ConversationCheckpoint
  */
 export const TasksSchema = z.object({
@@ -71,6 +60,7 @@ export const TasksSchema = z.object({
   instructions: z.string(),
   assigned_to: z.string().uuid().optional(),
   created_at: z.union([z.date(), z.number()]),
+  generated_artifacts: z.unknown().optional(),
 }).strict();
 
 export type Tasks = z.infer<typeof TasksSchema>;

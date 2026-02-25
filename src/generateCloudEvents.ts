@@ -1,7 +1,7 @@
 import { TransitionDefinition } from "./transitionsParser.ts";
 
 export function generateCloudEvents(transitions: TransitionDefinition[]): string {
-  let output = `// Auto-generated from contracts/TRANSITIONS.md
+  let output = `// Auto-generated from contracts/domain/TRANSITIONS.md
 // Do not edit manually
 
 import { z } from "zod";

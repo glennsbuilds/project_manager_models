@@ -1,4 +1,4 @@
-// Auto-generated from contracts/TRANSITIONS.md
+// Auto-generated from contracts/domain/TRANSITIONS.md
 // Do not edit manually
 
 import { z } from "zod";

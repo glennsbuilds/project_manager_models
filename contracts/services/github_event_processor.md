@@ -67,7 +67,7 @@ EventBridge envelope containing a CloudEvents-formatted message:
 ### Conversation
 Represents a tracked work item. Currently backed by a GitHub Projects v2 item, but designed as a broader abstraction that can eventually encompass issues, discussions, or items from other sources.
 
-For the complete Conversation schema, see [PRIMITIVES.md - Conversation](PRIMITIVES.md#conversation).
+For the complete Conversation schema, see [PRIMITIVES.md - Conversation](../domain/PRIMITIVES.md#conversation).
 
 Key fields include:
 - `id` — GUID
@@ -83,7 +83,7 @@ Key fields include:
 ### Actor
 Represents a user identity. Currently backed by a GitHub user, but designed as a broader abstraction that can eventually encompass identities from multiple communication sources (Slack, email, etc.).
 
-For the complete Actor schema, see [PRIMITIVES.md - Actor](PRIMITIVES.md#actor).
+For the complete Actor schema, see [PRIMITIVES.md - Actor](../domain/PRIMITIVES.md#actor).
 
 Key fields include:
 - `id` — GUID
@@ -285,7 +285,7 @@ query {
 
 ## Events Emitted
 
-All events are published to EventBridge using CloudEvents format with source `project-manager.github-event-processor`. For exact payload schemas, see [TRANSITIONS.md](TRANSITIONS.md).
+All events are published to EventBridge using CloudEvents format with source `project-manager.github-event-processor`. For exact payload schemas, see [TRANSITIONS.md](../domain/TRANSITIONS.md).
 
 ### project_manager.conversation_started
 - **When:** A new Conversation is created (first time this `item_node_id` is seen)
@@ -295,12 +295,12 @@ All events are published to EventBridge using CloudEvents format with source `pr
 ### project_manager.actor_created
 - **When:** A new Actor is created (first time this `sender_login` is seen)
 - **Purpose:** Signals that a new user identity has been registered
-- **Schema:** See [TRANSITIONS.md](TRANSITIONS.md) for payload structure
+- **Schema:** See [TRANSITIONS.md](../domain/TRANSITIONS.md) for payload structure
 
 ### project_manager.conversation_waiting
 - **When:** Always emitted after Conversation, Actor, and content are resolved
 - **Purpose:** Signals to the conversation assembler that a conversation needs attention
-- **Schema:** See [TRANSITIONS.md](TRANSITIONS.md)
+- **Schema:** See [TRANSITIONS.md](../domain/TRANSITIONS.md)
 - **Key Fields:**
   - `conversation_id` — internal Conversation ID
   - `actor_id` — internal Actor ID
@@ -327,7 +327,7 @@ All events are published to EventBridge using CloudEvents format with source `pr
 - Database (for Conversation and Actor persistence)
 - Lambda execution role with permissions for SQS, EventBridge, and database access
 
-For database design decisions (engine choice, schema, partition keys, indexes, etc.), see [INFRASTRUCTURE.md](INFRASTRUCTURE.md). That document is the canonical source for all infrastructure architecture decisions.
+For database design decisions (engine choice, schema, partition keys, indexes, etc.), see [infrastructure.md](../policies/infrastructure.md). That document is the canonical source for all infrastructure architecture decisions.
 
 ### Environment Variables
 - `GITHUB_TOKEN` — GitHub API authentication (for querying project items, user info, and comments)

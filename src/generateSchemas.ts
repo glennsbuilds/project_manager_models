@@ -2,7 +2,7 @@ import { PrimitiveDefinition } from "./parser.ts";
 import { mapMarkdownTypeToZod } from "./typeConverter.ts";
 
 export function generateSchemas(primitives: PrimitiveDefinition[]): string {
-  let output = `// Auto-generated from contracts/PRIMITIVES.md
+  let output = `// Auto-generated from contracts/domain/PRIMITIVES.md
 // Do not edit manually
 
 import { z } from "zod";

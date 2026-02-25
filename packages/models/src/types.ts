@@ -1,4 +1,4 @@
-// Auto-generated from contracts/PRIMITIVES.md
+// Auto-generated from contracts/domain/PRIMITIVES.md
 // Do not edit manually
 
 /**
@@ -43,15 +43,6 @@ export interface ConversationCheckpoint {
 }
 
 /**
- * Represents a group of Actors who participate in in conversations and tasks
- */
-export interface Community {
-  id: string;
-  name: string;
-  description?: string;
-}
-
-/**
  * A commitment to perform work authorized by a ConversationCheckpoint
  */
 export interface Tasks {
@@ -61,6 +52,7 @@ export interface Tasks {
   instructions: string;
   assigned_to?: string;
   created_at: Date | number;
+  generated_artifacts?: unknown;
 }
 
 /**

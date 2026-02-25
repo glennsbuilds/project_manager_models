@@ -76,8 +76,8 @@ An authoritative decision is recorded for a conversation, representing a stable 
 
 #### **Trigger**
 
-* The LLM interface service evaluates conversation context and determines a decisional boundary has been reached.
-* The service creates a checkpoint with a summary of the current conversation state.
+* The conversation pipeline's architect agent evaluates the conversation context and determines a decisional boundary has been reached.
+* The pipeline persists a checkpoint with a summary of the current conversation state.
 
 #### **Preconditions**
 
@@ -107,6 +107,10 @@ An authoritative decision is recorded for a conversation, representing a stable 
   * summary
   * created_at
 
+#### **Downstream Consumers**
+
+* **Outbound service**: Listens for checkpoint types `NEED_INFORMATION`, `WORK_COMPLETED`, and `CLOSE_CONVERSATION`. On receiving the event, the outbound service reads the latest Message for the conversation from the database and posts it to the user via the appropriate channel (resolved from the conversation's `external_source`).
+
 #### **Facts NOT Emitted**
 
 * No tasks are created directly by this transition.
@@ -132,8 +136,8 @@ An authoritative decision is recorded for a conversation, representing a stable 
 
 #### **Trigger:**
 
-* The LLM interface service creates tasks after a `BEGIN_WORK` checkpoint.
-* One task is created per task instruction from the LLM.
+* The conversation pipeline creates tasks after the architect agent issues a `BEGIN_WORK` decision.
+* One task is created per task instruction from the architect agent.
 
 #### **Preconditions:**
 
