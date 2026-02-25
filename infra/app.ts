@@ -4,9 +4,12 @@ import * as events from "aws-cdk-lib/aws-events";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import {
   ConversationPipelineConstruct,
 } from "../packages/pipeline-cdk/src/conversationPipeline";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = new cdk.App();
 
