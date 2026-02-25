@@ -34,6 +34,19 @@ const busName = ssm.StringParameter.valueForStringParameter(
 );
 const bus = events.EventBus.fromEventBusName(stack, "SharedBus", busName);
 
+// Agent ID parameters — replace dummy values with real Bedrock agent IDs
+new ssm.StringParameter(stack, "SummarizerAgentIdParam", {
+  parameterName: "/project-manager/summarizer-agent-id",
+  stringValue: "PLACEHOLDER",
+  description: "Bedrock agent ID for the summarizer agent",
+});
+
+new ssm.StringParameter(stack, "ArchitectAgentIdParam", {
+  parameterName: "/project-manager/architect-agent-id",
+  stringValue: "PLACEHOLDER",
+  description: "Bedrock agent ID for the architect agent",
+});
+
 new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
