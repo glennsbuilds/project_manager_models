@@ -13,13 +13,40 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = new cdk.App();
 
-const stack = new cdk.Stack(app, "ConversationPipelineStack", {
-  env: { region: "us-east-1" },
-  tags: {
-    project: "project-manager",
-    environment: "production",
-  },
+const commonEnv = { region: "us-east-1" };
+const commonTags = {
+  project: "project-manager",
+  environment: "production",
+};
+
+// Stack 1: SSM parameters — deployed first so they exist before the pipeline
+// stack references them via CloudFormation dynamic references.
+// Replace PLACEHOLDER values with real Bedrock agent IDs once they are known.
+const paramsStack = new cdk.Stack(app, "ProjectManagerParamsStack", {
+  env: commonEnv,
+  tags: commonTags,
 });
+
+new ssm.StringParameter(paramsStack, "SummarizerAgentIdParam", {
+  parameterName: "/project-manager/summarizer-agent-id",
+  stringValue: "PLACEHOLDER",
+  description: "Bedrock agent ID for the summarizer agent",
+});
+
+new ssm.StringParameter(paramsStack, "ArchitectAgentIdParam", {
+  parameterName: "/project-manager/architect-agent-id",
+  stringValue: "PLACEHOLDER",
+  description: "Bedrock agent ID for the architect agent",
+});
+
+// Stack 2: Conversation pipeline — depends on paramsStack so CDK always
+// deploys the parameters before this stack's changeset is created.
+const stack = new cdk.Stack(app, "ConversationPipelineStack", {
+  env: commonEnv,
+  tags: commonTags,
+});
+
+stack.addDependency(paramsStack);
 
 // Look up shared resources via SSM
 const tableName = ssm.StringParameter.valueForStringParameter(
@@ -33,19 +60,6 @@ const busName = ssm.StringParameter.valueForStringParameter(
   "/project-manager/event-bus-name",
 );
 const bus = events.EventBus.fromEventBusName(stack, "SharedBus", busName);
-
-// Agent ID parameters — replace dummy values with real Bedrock agent IDs
-new ssm.StringParameter(stack, "SummarizerAgentIdParam", {
-  parameterName: "/project-manager/summarizer-agent-id",
-  stringValue: "PLACEHOLDER",
-  description: "Bedrock agent ID for the summarizer agent",
-});
-
-new ssm.StringParameter(stack, "ArchitectAgentIdParam", {
-  parameterName: "/project-manager/architect-agent-id",
-  stringValue: "PLACEHOLDER",
-  description: "Bedrock agent ID for the architect agent",
-});
 
 new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
