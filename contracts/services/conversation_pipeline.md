@@ -110,9 +110,11 @@ steps:
   - name: SummarizerAgent
     type: BedrockAgentCore
     agent_id_env: SUMMARIZER_AGENT_ID
+    prompt_contract: ../agents/summarizer.md
     description: >
-      Distills the conversation into a structured analysis — request summary,
-      goals, constraints, and open questions.
+      Distills the conversation into a structured analysis — intent, requirements,
+      assumptions, approval status, and open questions. See agents/summarizer.md
+      for the full prompt contract.
     input: "$.assembled_message"
     output:
       - name: conversation_id
@@ -120,11 +122,27 @@ steps:
       - name: summary
         type: object
         fields:
-          - name: request
+          - name: approval
+            type: object
+            fields:
+              - name: status
+                type: enum
+                values: [APPROVED, PENDING]
+              - name: approved_by
+                type: string
+                optional: true
+              - name: approval_comment
+                type: string
+                optional: true
+          - name: core_intent
             type: string
-          - name: goals
+          - name: key_context
+            type: string
+          - name: stated_requirements
             type: string[]
-          - name: constraints
+          - name: implied_requirements
+            type: string[]
+          - name: inferred_assumptions
             type: string[]
           - name: open_questions
             type: string[]
@@ -291,9 +309,11 @@ agents:
     type: BedrockAgentCore
     agent_id_env: SUMMARIZER_AGENT_ID
     model: # configured externally, not in CDK
+    prompt_contract: ../agents/summarizer.md
     description: >
       Distills conversation context into a structured analysis.
-      Prompt configuration is managed outside of infrastructure deployment.
+      Prompt contract: contracts/agents/summarizer.md
+      Infrastructure deployment generates resource + IAM only.
     infrastructure_only: true  # CDK generates resource + IAM, not prompts
 
   - name: ArchitectAgent

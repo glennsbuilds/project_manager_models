@@ -22,6 +22,8 @@ The repo serves three purposes:
 │   │   ├── github_trigger.md        # GitHub webhook intake lambda
 │   │   ├── github_event_processor.md # GitHub event hydration + persistence
 │   │   └── conversation_pipeline.md  # Step Function: AI agent orchestration
+│   ├── agents/                      # AI agent prompt contracts
+│   │   └── summarizer.md            # Summarizer Agent: intent extraction + approval detection
 │   └── policies/                    # Cross-cutting standards
 │       ├── coding.md                # Language, testing, handler patterns
 │       └── infrastructure.md        # AWS, CDK, messaging, storage
@@ -70,7 +72,7 @@ The repo serves three purposes:
 
 ## Contracts
 
-Contracts are the source of truth for the entire system. They are organized into three categories:
+Contracts are the source of truth for the entire system. They are organized into four categories:
 
 ### Domain (`contracts/domain/`)
 
@@ -84,6 +86,12 @@ Each service contract defines a single deployable unit — its trigger, processi
 - **github_trigger.md** — webhook intake Lambda that receives GitHub `projects_v2_item` edits and emits events to EventBridge
 - **github_event_processor.md** — event processor Lambda that hydrates domain objects from GitHub, persists them, and emits `conversation_waiting` events
 - **conversation_pipeline.md** — Step Function that orchestrates the conversation lifecycle through Bedrock AgentCore agents (summarizer, architect, decision routing)
+
+### Agents (`contracts/agents/`)
+
+Each agent contract defines the prompt, input/output schema, and design rationale for a Bedrock AgentCore agent used in the conversation pipeline. These are the source of truth for agent behavior — infrastructure (IAM, resource creation) is defined in the service contracts; prompts and output schemas live here.
+
+- **summarizer.md** — Summarizer Agent: extracts user intent, requirements, assumptions, approval status, and open questions from assembled conversation data
 
 ### Policies (`contracts/policies/`)
 
