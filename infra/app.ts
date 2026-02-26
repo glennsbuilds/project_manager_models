@@ -4,6 +4,7 @@ import * as events from "aws-cdk-lib/aws-events";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as path from "path";
+import * as fs from "fs";
 import { fileURLToPath } from "url";
 import {
   ConversationPipelineConstruct,
@@ -27,10 +28,10 @@ const paramsStack = new cdk.Stack(app, "ProjectManagerParamsStack", {
   tags: commonTags,
 });
 
-new ssm.StringParameter(paramsStack, "SummarizerAgentIdParam", {
-  parameterName: "/project-manager/summarizer-agent-id",
+new ssm.StringParameter(paramsStack, "SummarizerModelIdParam", {
+  parameterName: "/project-manager/summarizer-model-id",
   stringValue: "PLACEHOLDER",
-  description: "Bedrock agent ID for the summarizer agent",
+  description: "Bedrock model ID for the summarizer (e.g., qwen2.5-coder-32b-instruct-v1:0)",
 });
 
 new ssm.StringParameter(paramsStack, "ArchitectAgentIdParam", {
@@ -61,8 +62,23 @@ const busName = ssm.StringParameter.valueForStringParameter(
 );
 const bus = events.EventBus.fromEventBusName(stack, "SharedBus", busName);
 
+// Load the summarizer system prompt from the contract prompt file.
+// The file contains both system and user sections separated by markers —
+// extract just the system prompt portion.
+const summarizerPromptRaw = fs.readFileSync(
+  path.resolve(__dirname, "../contracts/agents/summarizer_prompt.txt"),
+  "utf-8",
+);
+const systemPromptMatch = summarizerPromptRaw.match(
+  /===== SYSTEM PROMPT =====\n([\s\S]*?)(?:\n===== USER TURN =====|$)/,
+);
+const summarizerSystemPrompt = systemPromptMatch
+  ? systemPromptMatch[1].trim()
+  : summarizerPromptRaw.trim();
+
 new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
   lambdaCode: lambda.Code.fromAsset(__dirname),
+  summarizerAgentSystemPrompt: summarizerSystemPrompt,
 });

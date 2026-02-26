@@ -87,10 +87,28 @@ function generatePropsInterface(
    * Lambda layers to attach to all functions (e.g., shared utilities layer).
    */
   readonly lambdaLayers?: lambda.ILayerVersion[];
-${generateSsmPropOverrides(pipeline.environment)}
+${generateBedrockConverseProps(pipeline)}${generateSsmPropOverrides(pipeline.environment)}
 }
 
 `;
+}
+
+/**
+ * Generate props for BedrockConverse steps (system prompt for each).
+ */
+function generateBedrockConverseProps(pipeline: ParsedPipeline): string {
+  const converseSteps = pipeline.steps.filter(
+    (s) => s.type === "BedrockConverse"
+  );
+  if (converseSteps.length === 0) return "";
+
+  let output = "\n  // BedrockConverse system prompts\n";
+  for (const step of converseSteps) {
+    const propName = camelCase(step.name) + "SystemPrompt";
+    output += `\n  /**\n   * System prompt for the ${step.name} step (Bedrock Converse API).\n   */\n`;
+    output += `  readonly ${propName}: string;\n`;
+  }
+  return output;
 }
 
 function generateSsmPropOverrides(env: EnvironmentVariable[]): string {
@@ -136,8 +154,11 @@ function generateConstructClass(
   // State machine definition
   output += generateStateMachineDefinition(pipeline);
 
-  // IAM grants
+  // IAM grants (Lambda functions)
   output += generateIamGrants(pipeline);
+
+  // IAM grants (State machine — for BedrockConverse steps)
+  output += generateStateMachineIamGrants(pipeline);
 
   output += `  }\n`;
   output += `}\n`;
@@ -372,7 +393,9 @@ function generateMainChain(pipeline: ParsedPipeline): string {
   }
 
   // Build the main chain
-  const preChoiceSteps = [];
+  // BedrockConverse steps produce two states (converse + reshape) that both
+  // need to appear in the chain.
+  const chainParts: string[] = [];
   let choiceStep: StepDefinition | null = null;
 
   for (const step of mainSteps) {
@@ -380,15 +403,21 @@ function generateMainChain(pipeline: ParsedPipeline): string {
       choiceStep = step;
       break;
     }
-    if (step.type !== "Succeed" && step.type !== "Placeholder") {
-      preChoiceSteps.push(step);
+    if (step.type === "Succeed" || step.type === "Placeholder") {
+      continue;
+    }
+    if (step.type === "BedrockConverse") {
+      chainParts.push(camelCase(step.name) + "ConverseTask");
+      chainParts.push(camelCase(step.name) + "ReshapeState");
+    } else {
+      chainParts.push(camelCase(step.name) + "Task");
     }
   }
 
-  if (preChoiceSteps.length > 0) {
-    output += `    const definition = ${camelCase(preChoiceSteps[0].name)}Task\n`;
-    for (let i = 1; i < preChoiceSteps.length; i++) {
-      output += `      .next(${camelCase(preChoiceSteps[i].name)}Task)\n`;
+  if (chainParts.length > 0) {
+    output += `    const definition = ${chainParts[0]}\n`;
+    for (let i = 1; i < chainParts.length; i++) {
+      output += `      .next(${chainParts[i]})\n`;
     }
     if (choiceStep) {
       output += `      .next(${camelCase(choiceStep.name)}Choice);\n\n`;
@@ -407,6 +436,10 @@ function generateMainTaskState(
   step: StepDefinition,
   pipeline: ParsedPipeline
 ): string {
+  if (step.type === "BedrockConverse") {
+    return generateBedrockConverseTaskState(step, pipeline);
+  }
+
   let output = "";
   const taskVarName = camelCase(step.name) + "Task";
   const fnVarName = camelCase(step.name) + "Fn";
@@ -432,6 +465,116 @@ function generateMainTaskState(
   output += `      });\n\n`;
 
   return output;
+}
+
+/**
+ * Generate a BedrockConverse step as two states:
+ * 1. CallAwsService — invokes the Bedrock Converse API directly
+ * 2. Pass — parses the JSON response and reshapes the state
+ *
+ * This replaces the Lambda wrapper + Bedrock Agent pattern with a direct
+ * Step Functions → Bedrock integration that works with any Bedrock model.
+ */
+function generateBedrockConverseTaskState(
+  step: StepDefinition,
+  pipeline: ParsedPipeline
+): string {
+  let output = "";
+  const converseVarName = camelCase(step.name) + "ConverseTask";
+  const reshapeVarName = camelCase(step.name) + "ReshapeState";
+
+  // Resolve the model ID from SSM
+  const envVar = pipeline.environment.find(
+    (e) => e.name === step.model_id_env
+  );
+  const modelIdParam = envVar ? camelCase(envVar.name) + "Param" : `"MISSING_MODEL_ID"`;
+
+  // Escape the system prompt prop name
+  const systemPromptProp = camelCase(step.name) + "SystemPrompt";
+
+  // Build the user message template
+  const inputField = step.input || "$.assembled_message";
+  const userMessageTemplate = step.user_message_template ||
+    "Here is the assembled conversation data:\\n\\n{}\\n\\nSummarize the intent of this conversation.";
+
+  // --- CallAwsService: Bedrock Converse API ---
+  output += `    // ${step.description?.trim().split("\n")[0] || step.name}\n`;
+  output += `    // Step 1: Invoke model via Bedrock Converse API\n`;
+  output += `    const ${converseVarName} = new tasks.CallAwsService(this, "${step.name}Converse", {\n`;
+  output += `      service: "bedrockruntime",\n`;
+  output += `      action: "converse",\n`;
+  output += `      parameters: {\n`;
+  output += `        ModelId: ${modelIdParam},\n`;
+  output += `        System: [{\n`;
+  output += `          Text: props.${systemPromptProp},\n`;
+  output += `        }],\n`;
+  output += `        Messages: [{\n`;
+  output += `          Role: "user",\n`;
+  output += `          Content: [{\n`;
+  output += `            Text: sfn.JsonPath.format(\n`;
+  output += `              "${escapeForTemplate(userMessageTemplate)}",\n`;
+  output += `              sfn.JsonPath.stringAt("${inputField}"),\n`;
+  output += `            ),\n`;
+  output += `          }],\n`;
+  output += `        }],\n`;
+  output += `        InferenceConfig: {\n`;
+  output += `          MaxTokens: 4096,\n`;
+  output += `          Temperature: 0,\n`;
+  output += `        },\n`;
+  output += `      },\n`;
+  output += `      iamResources: ["arn:aws:bedrock:*::foundation-model/*"],\n`;
+  output += `      iamAction: "bedrock:InvokeModel",\n`;
+  output += `      resultPath: "$.modelResponse",\n`;
+
+  // Timeout
+  if (step.timeout_seconds) {
+    output += `      taskTimeout: sfn.Timeout.duration(cdk.Duration.seconds(${step.timeout_seconds})),\n`;
+  }
+
+  output += `    })`;
+
+  // Add retry
+  const retry = step.retry || findErrorHandlingRetry(step.name, pipeline);
+  if (retry) {
+    output += `\n      .addRetry({\n`;
+    output += `        maxAttempts: ${retry.max_attempts},\n`;
+    output += `        backoffRate: ${retry.backoff_rate},\n`;
+    output += `        interval: cdk.Duration.seconds(${retry.interval_seconds}),\n`;
+    output += `      })`;
+  }
+
+  output += `\n      .addCatch(failState, {\n`;
+  output += `        resultPath: "$.error",\n`;
+  output += `      });\n\n`;
+
+  // --- Pass state: parse JSON response and reshape ---
+  output += `    // Step 2: Parse model JSON response and reshape state\n`;
+  output += `    const ${reshapeVarName} = new sfn.Pass(this, "${step.name}Reshape", {\n`;
+  output += `      parameters: {\n`;
+
+  // Pass through fields from the current state
+  const passThrough = step.pass_through || [];
+  for (const field of passThrough) {
+    output += `        "${field}.$": "$.${field}",\n`;
+  }
+
+  // Parse the model's JSON text response into a structured object
+  output += `        "summary.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",\n`;
+  output += `      },\n`;
+  output += `    });\n\n`;
+
+  return output;
+}
+
+/**
+ * Escape a template string for embedding in generated TypeScript code.
+ * Converts actual newlines to \\n sequences and escapes double quotes.
+ */
+function escapeForTemplate(template: string): string {
+  return template
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n");
 }
 
 function generateChoiceState(step: StepDefinition): string {
@@ -483,11 +626,35 @@ function generateIamGrants(pipeline: ParsedPipeline): string {
   return output;
 }
 
+/**
+ * Generate IAM grants on the state machine role for BedrockConverse steps.
+ * CallAwsService automatically creates an IAM policy from iamAction/iamResources,
+ * but we document the grant explicitly for clarity.
+ */
+function generateStateMachineIamGrants(pipeline: ParsedPipeline): string {
+  const converseSteps = pipeline.steps.filter(
+    (s) => s.type === "BedrockConverse"
+  );
+  if (converseSteps.length === 0) return "";
+
+  let output =
+    "    // --- State machine IAM grants (BedrockConverse) ---\n";
+  output +=
+    "    // CallAwsService creates these grants automatically via iamAction/iamResources.\n";
+  output +=
+    "    // Listed here for documentation — no additional code needed.\n\n";
+
+  return output;
+}
+
 // --- Helpers ---
 
 /**
  * Collect all Lambda and BedrockAgentCore steps across main steps and branches,
  * deduplicated by step name. Steps with the same name share a Lambda function.
+ *
+ * BedrockConverse steps are excluded — they use direct Step Functions SDK
+ * integration instead of a Lambda wrapper.
  */
 function collectAllLambdaSteps(pipeline: ParsedPipeline): StepDefinition[] {
   const steps: StepDefinition[] = [];

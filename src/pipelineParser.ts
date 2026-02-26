@@ -33,7 +33,7 @@ export interface ChoiceBranch {
 
 export interface StepDefinition {
   name: string;
-  type: "Lambda" | "BedrockAgentCore" | "Choice" | "Placeholder" | "Succeed";
+  type: "Lambda" | "BedrockAgentCore" | "BedrockConverse" | "Choice" | "Placeholder" | "Succeed";
   description?: string;
   retry?: RetryConfig;
   timeout_seconds?: number;
@@ -49,9 +49,13 @@ export interface StepDefinition {
   input_field?: string;
   branches?: ChoiceBranch[];
   default?: string;
-  // Agent-specific
+  // Agent-specific (BedrockAgentCore)
   agent_id_env?: string;
   input?: string;
+  // BedrockConverse-specific
+  model_id_env?: string;
+  user_message_template?: string;
+  pass_through?: string[];
 }
 
 export interface BranchDefinition {
@@ -62,7 +66,9 @@ export interface BranchDefinition {
 export interface AgentDefinition {
   name: string;
   type: string;
-  agent_id_env: string;
+  agent_id_env?: string;
+  model_id_env?: string;
+  prompt_contract?: string;
   description?: string;
   infrastructure_only?: boolean;
 }

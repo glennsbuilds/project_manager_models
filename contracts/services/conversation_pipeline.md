@@ -108,14 +108,19 @@ steps:
         action: FAIL
 
   - name: SummarizerAgent
-    type: BedrockAgentCore
-    agent_id_env: SUMMARIZER_AGENT_ID
+    type: BedrockConverse
+    model_id_env: SUMMARIZER_MODEL_ID
     prompt_contract: ../agents/summarizer.md
     description: >
       Distills the conversation into a structured analysis — intent, requirements,
       assumptions, approval status, and open questions. See agents/summarizer.md
-      for the full prompt contract.
+      for the full prompt contract. Invokes the model directly via the Bedrock
+      Converse API — no Bedrock Agent required.
     input: "$.assembled_message"
+    user_message_template: "Here is the assembled conversation data:\n\n{}\n\nSummarize the intent of this conversation."
+    pass_through:
+      - conversation_id
+      - actor_id
     output:
       - name: conversation_id
         type: GUID
@@ -306,15 +311,14 @@ branches:
 ```yaml
 agents:
   - name: SummarizerAgent
-    type: BedrockAgentCore
-    agent_id_env: SUMMARIZER_AGENT_ID
-    model: # configured externally, not in CDK
+    type: BedrockConverse
+    model_id_env: SUMMARIZER_MODEL_ID
     prompt_contract: ../agents/summarizer.md
     description: >
       Distills conversation context into a structured analysis.
       Prompt contract: contracts/agents/summarizer.md
-      Infrastructure deployment generates resource + IAM only.
-    infrastructure_only: true  # CDK generates resource + IAM, not prompts
+      Invokes model directly via Bedrock Converse API in the Step Function.
+      System prompt passed as a construct prop at deployment time.
 
   - name: ArchitectAgent
     type: BedrockAgentCore
@@ -336,9 +340,9 @@ environment:
   - name: DYNAMODB_TABLE_NAME
     source: ssm
     parameter: /project-manager/dynamodb-table-name
-  - name: SUMMARIZER_AGENT_ID
+  - name: SUMMARIZER_MODEL_ID
     source: ssm
-    parameter: /project-manager/summarizer-agent-id
+    parameter: /project-manager/summarizer-model-id
   - name: ARCHITECT_AGENT_ID
     source: ssm
     parameter: /project-manager/architect-agent-id
@@ -362,7 +366,7 @@ error_handling:
       backoff_rate: 2
       interval_seconds: 5
     on_failure: FAIL_EXECUTION
-    notes: "Most likely failure point — model throttling, timeouts"
+    notes: "Direct Bedrock Converse API call — may fail on model throttling, timeouts"
 
   - step: ArchitectAgent
     retry:

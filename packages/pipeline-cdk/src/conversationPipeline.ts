@@ -53,6 +53,13 @@ export interface ConversationPipelineProps {
    */
   readonly lambdaLayers?: lambda.ILayerVersion[];
 
+  // BedrockConverse system prompts
+
+  /**
+   * System prompt for the SummarizerAgent step (Bedrock Converse API).
+   */
+  readonly summarizerAgentSystemPrompt: string;
+
   // SSM parameter path overrides (defaults shown)
 
   /**
@@ -66,9 +73,9 @@ export interface ConversationPipelineProps {
   readonly dynamodbTableNameSsmPath?: string;
 
   /**
-   * SSM path for SUMMARIZER_AGENT_ID. Defaults to "/project-manager/summarizer-agent-id".
+   * SSM path for SUMMARIZER_MODEL_ID. Defaults to "/project-manager/summarizer-model-id".
    */
-  readonly summarizerAgentIdSsmPath?: string;
+  readonly summarizerModelIdSsmPath?: string;
 
   /**
    * SSM path for ARCHITECT_AGENT_ID. Defaults to "/project-manager/architect-agent-id".
@@ -80,7 +87,6 @@ export interface ConversationPipelineProps {
 export class ConversationPipelineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
   public readonly assembleContextFn: lambda.Function;
-  public readonly summarizerAgentFn: lambda.Function;
   public readonly architectAgentFn: lambda.Function;
   public readonly persistCheckpointFn: lambda.Function;
   public readonly persistMessageFn: lambda.Function;
@@ -104,9 +110,9 @@ export class ConversationPipelineConstruct extends Construct {
       this,
       props.dynamodbTableNameSsmPath ?? "/project-manager/dynamodb-table-name",
     );
-    const summarizerAgentIdParam = ssm.StringParameter.valueForStringParameter(
+    const summarizerModelIdParam = ssm.StringParameter.valueForStringParameter(
       this,
-      props.summarizerAgentIdSsmPath ?? "/project-manager/summarizer-agent-id",
+      props.summarizerModelIdSsmPath ?? "/project-manager/summarizer-model-id",
     );
     const architectAgentIdParam = ssm.StringParameter.valueForStringParameter(
       this,
@@ -126,22 +132,6 @@ export class ConversationPipelineConstruct extends Construct {
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
-      },
-      tracing: lambda.Tracing.ACTIVE,
-    });
-
-    // Distills the conversation into a structured analysis — request summary, goals, constraints, and open questions.
-    this.summarizerAgentFn = new lambda.Function(this, "SummarizerAgentFunction", {
-      runtime,
-      memorySize,
-      timeout: cdk.Duration.seconds(120),
-      handler: "handlers/summarizerAgent.handler",
-      code: props.lambdaCode,
-      layers: props.lambdaLayers,
-      environment: {
-        EVENT_BUS_NAME: eventBusNameParam,
-        DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
-        SUMMARIZER_AGENT_ID: summarizerAgentIdParam,
       },
       tracing: lambda.Tracing.ACTIVE,
     });
@@ -398,9 +388,34 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
-    const summarizerAgentTask = new tasks.LambdaInvoke(this, "SummarizerAgent", {
-      lambdaFunction: this.summarizerAgentFn,
-      outputPath: "$.Payload",
+    // Distills the conversation into a structured analysis — intent, requirements, assumptions, approval status, and open questions. See agents/summarizer.md for the full prompt contract. Invokes the model directly via the Bedrock Converse API — no Bedrock Agent required.
+    // Step 1: Invoke model via Bedrock Converse API
+    const summarizerAgentConverseTask = new tasks.CallAwsService(this, "SummarizerAgentConverse", {
+      service: "bedrockruntime",
+      action: "converse",
+      parameters: {
+        ModelId: summarizerModelIdParam,
+        System: [{
+          Text: props.summarizerAgentSystemPrompt,
+        }],
+        Messages: [{
+          Role: "user",
+          Content: [{
+            Text: sfn.JsonPath.format(
+              "Here is the assembled conversation data:\n\n{}\n\nSummarize the intent of this conversation.",
+              sfn.JsonPath.stringAt("$.assembled_message"),
+            ),
+          }],
+        }],
+        InferenceConfig: {
+          MaxTokens: 4096,
+          Temperature: 0,
+        },
+      },
+      iamResources: ["arn:aws:bedrock:*::foundation-model/*"],
+      iamAction: "bedrock:InvokeModel",
+      resultPath: "$.modelResponse",
+      taskTimeout: sfn.Timeout.duration(cdk.Duration.seconds(120)),
     })
       .addRetry({
         maxAttempts: 3,
@@ -410,6 +425,15 @@ export class ConversationPipelineConstruct extends Construct {
       .addCatch(failState, {
         resultPath: "$.error",
       });
+
+    // Step 2: Parse model JSON response and reshape state
+    const summarizerAgentReshapeState = new sfn.Pass(this, "SummarizerAgentReshape", {
+      parameters: {
+        "conversation_id.$": "$.conversation_id",
+        "actor_id.$": "$.actor_id",
+        "summary.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",
+      },
+    });
 
     const architectAgentTask = new tasks.LambdaInvoke(this, "ArchitectAgent", {
       lambdaFunction: this.architectAgentFn,
@@ -440,7 +464,8 @@ export class ConversationPipelineConstruct extends Construct {
       .otherwise(failState);
 
     const definition = assembleContextTask
-      .next(summarizerAgentTask)
+      .next(summarizerAgentConverseTask)
+      .next(summarizerAgentReshapeState)
       .next(architectAgentTask)
       .next(routeOnDecisionChoice);
 
@@ -465,15 +490,6 @@ export class ConversationPipelineConstruct extends Construct {
     props.dynamoTable.grantReadWriteData(this.assembleContextFn);
     props.eventBus.grantPutEventsTo(this.assembleContextFn);
 
-    props.dynamoTable.grantReadWriteData(this.summarizerAgentFn);
-    props.eventBus.grantPutEventsTo(this.summarizerAgentFn);
-    this.summarizerAgentFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock:InvokeAgent"],
-        resources: ["*"],
-      }),
-    );
-
     props.dynamoTable.grantReadWriteData(this.architectAgentFn);
     props.eventBus.grantPutEventsTo(this.architectAgentFn);
     this.architectAgentFn.addToRolePolicy(
@@ -497,6 +513,10 @@ export class ConversationPipelineConstruct extends Construct {
 
     props.dynamoTable.grantReadWriteData(this.emitEventsFn);
     props.eventBus.grantPutEventsTo(this.emitEventsFn);
+
+    // --- State machine IAM grants (BedrockConverse) ---
+    // CallAwsService creates these grants automatically via iamAction/iamResources.
+    // Listed here for documentation — no additional code needed.
 
   }
 }
