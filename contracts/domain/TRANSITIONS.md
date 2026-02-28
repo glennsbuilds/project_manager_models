@@ -17,6 +17,9 @@
 **Future Work:**
 - TaskCreated
 - TaskCheckpointCreated
+- ApplicationInstalled
+- ApplicationUpdated
+- ApplicationDisabled
 
 # Event Terminology
 
@@ -256,3 +259,102 @@ A message has been added to the conversation - from either the human or AI actor
 
 * Messages are immutable once created.
 * Messages in and of themselves do not result in change of state for the conversation.
+
+
+### **Transition: `ApplicationInstalled`** *(FUTURE WORK)*
+
+#### **Description**
+
+An application has been successfully installed into a community. The install Step Function has completed and the application is ready for use.
+
+#### **Trigger**
+
+* The install Step Function completes successfully after deploying the application CDK stack and verifying the deployment.
+
+#### **Preconditions**
+
+* An `InstalledApplication` record exists with `status: INSTALLING` for the given community and application.
+
+#### **State Changes**
+
+* `InstalledApplication` `status` is updated to `ACTIVE`.
+
+#### **Fact Emitted**
+
+* `project_manager.application.installed`
+  * community_id
+  * application_name
+  * installed_version
+  * installed_at
+
+#### **Invariants**
+
+* An application may only be installed once per community (idempotent guard on install workflow).
+* No application data is written to other namespaces by this transition.
+
+
+### **Transition: `ApplicationUpdated`** *(FUTURE WORK)*
+
+#### **Description**
+
+A version rollout for an installed application has completed. The new version is now serving 100% of traffic and is promoted to the active version.
+
+#### **Trigger**
+
+* `set_rollout_percentage` is called with `percentage: 100`, or the rollout automation completes.
+
+#### **Preconditions**
+
+* An `InstalledApplication` record exists with `status: UPDATING` for the given community and application.
+* `target_version` is set.
+
+#### **State Changes**
+
+* `installed_version` is updated to `target_version`.
+* `target_version` is cleared.
+* `rollout_percentage` is set to 100.
+* `status` is updated to `ACTIVE`.
+
+#### **Fact Emitted**
+
+* `project_manager.application.updated`
+  * community_id
+  * application_name
+  * installed_version (the newly promoted version)
+  * updated_at
+
+#### **Invariants**
+
+* A rollout cannot be completed if `target_version` is not set.
+* Rollback (`percentage: 0`) clears `target_version` and returns to `ACTIVE` without emitting this event.
+
+
+### **Transition: `ApplicationDisabled`** *(FUTURE WORK)*
+
+#### **Description**
+
+An installed application has been disabled. Its infrastructure remains deployed and its data is preserved, but the application is no longer active.
+
+#### **Trigger**
+
+* The `disable_application` MCP tool is called for an ACTIVE application.
+
+#### **Preconditions**
+
+* An `InstalledApplication` record exists with `status: ACTIVE` for the given community and application.
+
+#### **State Changes**
+
+* `InstalledApplication` `status` is updated to `DISABLED`.
+
+#### **Fact Emitted**
+
+* `project_manager.application.disabled`
+  * community_id
+  * application_name
+  * updated_at
+
+#### **Invariants**
+
+* Only ACTIVE applications can be disabled. Applications in INSTALLING or UPDATING state cannot be disabled.
+* Disabling an application does not delete its data or CDK stack.
