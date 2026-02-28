@@ -199,6 +199,20 @@ Read `contracts/domain/TRANSITIONS.md`. Does the request require a new event typ
 
 ---
 
+## Agent Context vs Runtime Queries
+
+Agents receive two categories of information:
+
+**Injected as context (static — always provided upfront)**
+The documents in this library. Read these to understand rules, data models, available applications, and how to design solutions.
+
+**Queried at runtime via MCP server (dynamic — query when you need live state)**
+The Platform MCP Server (`contracts/platform/MCP_SERVER.md`) provides live community and application inventory state. Use it to check what is actually installed in a community, trigger installs, and manage rollouts.
+
+The rule of thumb: if the answer could change between two requests, use the MCP server. If the answer is the same for everyone, it's in the document library.
+
+---
+
 ## Key Contracts Reference
 
 | Document | Purpose |
@@ -208,5 +222,6 @@ Read `contracts/domain/TRANSITIONS.md`. Does the request require a new event typ
 | `contracts/platform/APPLICATION_CATALOG.md` | Available applications — check before building anything new |
 | `contracts/platform/APPLICATION_MODEL.md` | How to define a new application |
 | `contracts/platform/COMMUNITY_CONFIGURATION.md` | Community and InstalledApplication data model |
+| `contracts/platform/MCP_SERVER.md` | Operational interface — live community state and application inventory |
 | `contracts/policies/infrastructure.md` | AWS infrastructure rules and patterns |
 | `contracts/policies/coding.md` | TypeScript coding standards and handler structure |
