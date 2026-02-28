@@ -158,13 +158,20 @@ steps:
     timeout_seconds: 120
 
   - name: ArchitectAgent
-    type: BedrockAgentCore
-    agent_id_env: ARCHITECT_AGENT_ID
+    type: BedrockConverse
+    model_id_env: ARCHITECT_MODEL_ID
+    prompt_contract: ../agents/architect.md
     description: >
       Evaluates the summarized conversation and makes a triage decision.
       Determines if there's enough information to begin work, or if the
-      pipeline should go back to the user.
-    input: "$.SummarizerAgent.output + $.conversation_id + $.actor_id"
+      pipeline should go back to the user. See agents/architect.md for the
+      full prompt contract. Invokes the model directly via the Bedrock
+      Converse API — no Bedrock Agent required.
+    input: "$.summary"
+    user_message_template: "Here is the conversation summary:\n\n{}\n\nMake a triage decision: NEED_INFORMATION, BEGIN_WORK, or CLOSE_CONVERSATION."
+    pass_through:
+      - conversation_id
+      - actor_id
     output:
       - name: conversation_id
         type: GUID
@@ -190,7 +197,7 @@ steps:
 
   - name: RouteOnDecision
     type: Choice
-    input_field: "$.ArchitectAgent.output.decision"
+    input_field: "$.decision"
     branches:
       - match: NEED_INFORMATION
         goto: BranchNeedInformation
@@ -216,7 +223,7 @@ branches:
             fields:
               conversation_id: "$.conversation_id"
               checkpoint_type: NEED_INFORMATION
-              summary: "$.ArchitectAgent.output.checkpoint_summary"
+              summary: "$.checkpoint_summary"
       - name: PersistMessage
         type: Lambda
         description: Create a Message from the AI response
@@ -226,7 +233,7 @@ branches:
             fields:
               actor_id: AI_ACTOR
               conversation_id: "$.conversation_id"
-              content: "$.ArchitectAgent.output.response_to_user"
+              content: "$.response_to_user"
       - name: EmitCheckpointEvent
         type: Lambda
         description: Publish checkpoint.created event to EventBridge
@@ -284,18 +291,18 @@ branches:
             fields:
               conversation_id: "$.conversation_id"
               checkpoint_type: CLOSE_CONVERSATION
-              summary: "$.ArchitectAgent.output.checkpoint_summary"
+              summary: "$.checkpoint_summary"
       - name: PersistMessage
         type: Lambda
         description: Create a Message if response_to_user is provided
-        condition: "$.ArchitectAgent.output.response_to_user != null"
+        condition: "$.response_to_user != null"
         writes:
           - store: MessageStore
             entity: Message
             fields:
               actor_id: AI_ACTOR
               conversation_id: "$.conversation_id"
-              content: "$.ArchitectAgent.output.response_to_user"
+              content: "$.response_to_user"
       - name: EmitCheckpointEvent
         type: Lambda
         description: Publish checkpoint.created event to EventBridge
@@ -321,13 +328,14 @@ agents:
       System prompt passed as a construct prop at deployment time.
 
   - name: ArchitectAgent
-    type: BedrockAgentCore
-    agent_id_env: ARCHITECT_AGENT_ID
-    model: # configured externally, not in CDK
+    type: BedrockConverse
+    model_id_env: ARCHITECT_MODEL_ID
+    prompt_contract: ../agents/architect.md
     description: >
       Evaluates summarized conversation and makes triage decisions.
-      Prompt configuration is managed outside of infrastructure deployment.
-    infrastructure_only: true  # CDK generates resource + IAM, not prompts
+      Prompt contract: contracts/agents/architect.md
+      Invokes model directly via Bedrock Converse API in the Step Function.
+      System prompt passed as a construct prop at deployment time.
 ```
 
 ### Environment Variables
@@ -343,9 +351,9 @@ environment:
   - name: SUMMARIZER_MODEL_ID
     source: ssm
     parameter: /project-manager/summarizer-model-id
-  - name: ARCHITECT_AGENT_ID
+  - name: ARCHITECT_MODEL_ID
     source: ssm
-    parameter: /project-manager/architect-agent-id
+    parameter: /project-manager/architect-model-id
 ```
 
 ### Error Handling
@@ -374,7 +382,7 @@ error_handling:
       backoff_rate: 2
       interval_seconds: 5
     on_failure: FAIL_EXECUTION
-    notes: "Most likely failure point — model throttling, timeouts"
+    notes: "Direct Bedrock Converse API call — may fail on model throttling, timeouts"
 
   - step: RouteOnDecision
     default: FAIL_EXECUTION

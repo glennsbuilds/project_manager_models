@@ -60,6 +60,11 @@ export interface ConversationPipelineProps {
    */
   readonly summarizerAgentSystemPrompt: string;
 
+  /**
+   * System prompt for the ArchitectAgent step (Bedrock Converse API).
+   */
+  readonly architectAgentSystemPrompt: string;
+
   // SSM parameter path overrides (defaults shown)
 
   /**
@@ -78,16 +83,15 @@ export interface ConversationPipelineProps {
   readonly summarizerModelIdSsmPath?: string;
 
   /**
-   * SSM path for ARCHITECT_AGENT_ID. Defaults to "/project-manager/architect-agent-id".
+   * SSM path for ARCHITECT_MODEL_ID. Defaults to "/project-manager/architect-model-id".
    */
-  readonly architectAgentIdSsmPath?: string;
+  readonly architectModelIdSsmPath?: string;
 
 }
 
 export class ConversationPipelineConstruct extends Construct {
   public readonly stateMachine: sfn.StateMachine;
   public readonly assembleContextFn: lambda.Function;
-  public readonly architectAgentFn: lambda.Function;
   public readonly persistCheckpointFn: lambda.Function;
   public readonly persistMessageFn: lambda.Function;
   public readonly emitCheckpointEventFn: lambda.Function;
@@ -114,9 +118,9 @@ export class ConversationPipelineConstruct extends Construct {
       this,
       props.summarizerModelIdSsmPath ?? "/project-manager/summarizer-model-id",
     );
-    const architectAgentIdParam = ssm.StringParameter.valueForStringParameter(
+    const architectModelIdParam = ssm.StringParameter.valueForStringParameter(
       this,
-      props.architectAgentIdSsmPath ?? "/project-manager/architect-agent-id",
+      props.architectModelIdSsmPath ?? "/project-manager/architect-model-id",
     );
 
     // --- Lambda functions ---
@@ -132,22 +136,6 @@ export class ConversationPipelineConstruct extends Construct {
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
-      },
-      tracing: lambda.Tracing.ACTIVE,
-    });
-
-    // Evaluates the summarized conversation and makes a triage decision. Determines if there's enough information to begin work, or if the pipeline should go back to the user.
-    this.architectAgentFn = new lambda.Function(this, "ArchitectAgentFunction", {
-      runtime,
-      memorySize,
-      timeout: cdk.Duration.seconds(120),
-      handler: "handlers/architectAgent.handler",
-      code: props.lambdaCode,
-      layers: props.lambdaLayers,
-      environment: {
-        EVENT_BUS_NAME: eventBusNameParam,
-        DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
-        ARCHITECT_AGENT_ID: architectAgentIdParam,
       },
       tracing: lambda.Tracing.ACTIVE,
     });
@@ -426,18 +414,52 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
-    // Step 2: Parse model JSON response and reshape state
+    // Step 2a: Parse model JSON response
+    const summarizerAgentParseState = new sfn.Pass(this, "SummarizerAgentParse", {
+      parameters: {
+        "conversation_id.$": "$.conversation_id",
+        "actor_id.$": "$.actor_id",
+        "parsed.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",
+      },
+    });
+
+    // Step 2b: Extract fields from parsed response
     const summarizerAgentReshapeState = new sfn.Pass(this, "SummarizerAgentReshape", {
       parameters: {
         "conversation_id.$": "$.conversation_id",
         "actor_id.$": "$.actor_id",
-        "summary.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",
+        "summary.$": "$.parsed",
       },
     });
 
-    const architectAgentTask = new tasks.LambdaInvoke(this, "ArchitectAgent", {
-      lambdaFunction: this.architectAgentFn,
-      outputPath: "$.Payload",
+    // Evaluates the summarized conversation and makes a triage decision. Determines if there's enough information to begin work, or if the pipeline should go back to the user. See agents/architect.md for the full prompt contract. Invokes the model directly via the Bedrock Converse API — no Bedrock Agent required.
+    // Step 1: Invoke model via Bedrock Converse API
+    const architectAgentConverseTask = new tasks.CallAwsService(this, "ArchitectAgentConverse", {
+      service: "bedrockruntime",
+      action: "converse",
+      parameters: {
+        ModelId: architectModelIdParam,
+        System: [{
+          Text: props.architectAgentSystemPrompt,
+        }],
+        Messages: [{
+          Role: "user",
+          Content: [{
+            Text: sfn.JsonPath.format(
+              "Here is the conversation summary:\n\n{}\n\nMake a triage decision: NEED_INFORMATION, BEGIN_WORK, or CLOSE_CONVERSATION.",
+              sfn.JsonPath.stringAt("$.summary"),
+            ),
+          }],
+        }],
+        InferenceConfig: {
+          MaxTokens: 4096,
+          Temperature: 0,
+        },
+      },
+      iamResources: ["arn:aws:bedrock:*::foundation-model/*"],
+      iamAction: "bedrock:InvokeModel",
+      resultPath: "$.modelResponse",
+      taskTimeout: sfn.Timeout.duration(cdk.Duration.seconds(120)),
     })
       .addRetry({
         maxAttempts: 3,
@@ -448,25 +470,49 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
+    // Step 2a: Parse model JSON response
+    const architectAgentParseState = new sfn.Pass(this, "ArchitectAgentParse", {
+      parameters: {
+        "conversation_id.$": "$.conversation_id",
+        "actor_id.$": "$.actor_id",
+        "parsed.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",
+      },
+    });
+
+    // Step 2b: Extract fields from parsed response
+    const architectAgentReshapeState = new sfn.Pass(this, "ArchitectAgentReshape", {
+      parameters: {
+        "conversation_id.$": "$.conversation_id",
+        "actor_id.$": "$.actor_id",
+        "decision.$": "$.parsed.decision",
+        "checkpoint_summary.$": "$.parsed.checkpoint_summary",
+        "response_to_user.$": "$.parsed.response_to_user",
+        "tasks.$": "$.parsed.tasks",
+      },
+    });
+
     const routeOnDecisionChoice = new sfn.Choice(this, "RouteOnDecision")
       .when(
-        sfn.Condition.stringEquals("$.ArchitectAgent.output.decision", "NEED_INFORMATION"),
+        sfn.Condition.stringEquals("$.decision", "NEED_INFORMATION"),
         branchNeedInformationChain,
       )
       .when(
-        sfn.Condition.stringEquals("$.ArchitectAgent.output.decision", "BEGIN_WORK"),
+        sfn.Condition.stringEquals("$.decision", "BEGIN_WORK"),
         branchBeginWorkChain,
       )
       .when(
-        sfn.Condition.stringEquals("$.ArchitectAgent.output.decision", "CLOSE_CONVERSATION"),
+        sfn.Condition.stringEquals("$.decision", "CLOSE_CONVERSATION"),
         branchCloseConversationChain,
       )
       .otherwise(failState);
 
     const definition = assembleContextTask
       .next(summarizerAgentConverseTask)
+      .next(summarizerAgentParseState)
       .next(summarizerAgentReshapeState)
-      .next(architectAgentTask)
+      .next(architectAgentConverseTask)
+      .next(architectAgentParseState)
+      .next(architectAgentReshapeState)
       .next(routeOnDecisionChoice);
 
     // State machine
@@ -476,6 +522,7 @@ export class ConversationPipelineConstruct extends Construct {
     });
 
     this.stateMachine = new sfn.StateMachine(this, "ConversationPipeline", {
+      stateMachineName: "ConversationPipeline",
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
       stateMachineType: sfn.StateMachineType.STANDARD,
       tracingEnabled: true,
@@ -489,15 +536,6 @@ export class ConversationPipelineConstruct extends Construct {
 
     props.dynamoTable.grantReadWriteData(this.assembleContextFn);
     props.eventBus.grantPutEventsTo(this.assembleContextFn);
-
-    props.dynamoTable.grantReadWriteData(this.architectAgentFn);
-    props.eventBus.grantPutEventsTo(this.architectAgentFn);
-    this.architectAgentFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock:InvokeAgent"],
-        resources: ["*"],
-      }),
-    );
 
     props.dynamoTable.grantReadWriteData(this.persistCheckpointFn);
     props.eventBus.grantPutEventsTo(this.persistCheckpointFn);

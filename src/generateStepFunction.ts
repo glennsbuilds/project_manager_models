@@ -276,6 +276,7 @@ function generateStateMachineDefinition(pipeline: ParsedPipeline): string {
   output += `    });\n\n`;
 
   output += `    this.stateMachine = new sfn.StateMachine(this, "${pipeline.metadata.name}", {\n`;
+  output += `      stateMachineName: "${pipeline.metadata.name}",\n`;
   output += `      definitionBody: sfn.DefinitionBody.fromChainable(definition),\n`;
   output += `      stateMachineType: sfn.StateMachineType.${pipeline.metadata.type},\n`;
   output += `      tracingEnabled: true,\n`;
@@ -393,7 +394,7 @@ function generateMainChain(pipeline: ParsedPipeline): string {
   }
 
   // Build the main chain
-  // BedrockConverse steps produce two states (converse + reshape) that both
+  // BedrockConverse steps produce three states (converse + parse + reshape) that all
   // need to appear in the chain.
   const chainParts: string[] = [];
   let choiceStep: StepDefinition | null = null;
@@ -408,6 +409,7 @@ function generateMainChain(pipeline: ParsedPipeline): string {
     }
     if (step.type === "BedrockConverse") {
       chainParts.push(camelCase(step.name) + "ConverseTask");
+      chainParts.push(camelCase(step.name) + "ParseState");
       chainParts.push(camelCase(step.name) + "ReshapeState");
     } else {
       chainParts.push(camelCase(step.name) + "Task");
@@ -547,9 +549,10 @@ function generateBedrockConverseTaskState(
   output += `        resultPath: "$.error",\n`;
   output += `      });\n\n`;
 
-  // --- Pass state: parse JSON response and reshape ---
-  output += `    // Step 2: Parse model JSON response and reshape state\n`;
-  output += `    const ${reshapeVarName} = new sfn.Pass(this, "${step.name}Reshape", {\n`;
+  // --- Pass state 1: parse JSON response into a temporary field ---
+  output += `    // Step 2a: Parse model JSON response\n`;
+  const parseVarName = camelCase(step.name) + "ParseState";
+  output += `    const ${parseVarName} = new sfn.Pass(this, "${step.name}Parse", {\n`;
   output += `      parameters: {\n`;
 
   // Pass through fields from the current state
@@ -558,8 +561,46 @@ function generateBedrockConverseTaskState(
     output += `        "${field}.$": "$.${field}",\n`;
   }
 
-  // Parse the model's JSON text response into a structured object
-  output += `        "summary.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",\n`;
+  // Parse JSON into a temporary "parsed" field
+  output += `        "parsed.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",\n`;
+  output += `      },\n`;
+  output += `    });\n\n`;
+
+  // --- Pass state 2: extract fields from the parsed object ---
+  output += `    // Step 2b: Extract fields from parsed response\n`;
+  output += `    const ${reshapeVarName} = new sfn.Pass(this, "${step.name}Reshape", {\n`;
+  output += `      parameters: {\n`;
+
+  // Pass through fields again
+  for (const field of passThrough) {
+    output += `        "${field}.$": "$.${field}",\n`;
+  }
+
+  // Extract output fields from the parsed object
+  // If the step defines output fields, extract each one individually.
+  // For object-type fields with nested 'fields', assign the entire parsed object.
+  // Otherwise, default to wrapping everything in a "summary" field (legacy behavior).
+  if (step.output && step.output.length > 0) {
+    // Extract each output field individually (excluding pass_through fields)
+    const outputFields = step.output.filter(
+      (f) => !passThrough.includes(f.name)
+    );
+
+    for (const field of outputFields) {
+      // If this field is an object with nested fields, the parsed JSON IS the object content
+      // (the LLM returns the nested properties at the top level, not wrapped in another object)
+      if (field.type === "object" && field.fields && field.fields.length > 0) {
+        output += `        "${field.name}.$": "$.parsed",\n`;
+      } else {
+        // For simple fields, extract from the parsed object
+        output += `        "${field.name}.$": "$.parsed.${field.name}",\n`;
+      }
+    }
+  } else {
+    // Legacy: wrap entire response in "summary" field
+    output += `        "summary.$": "$.parsed",\n`;
+  }
+
   output += `      },\n`;
   output += `    });\n\n`;
 

@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as path from "path";
@@ -34,10 +35,10 @@ new ssm.StringParameter(paramsStack, "SummarizerModelIdParam", {
   description: "Bedrock model ID for the summarizer (e.g., qwen2.5-coder-32b-instruct-v1:0)",
 });
 
-new ssm.StringParameter(paramsStack, "ArchitectAgentIdParam", {
-  parameterName: "/project-manager/architect-agent-id",
+new ssm.StringParameter(paramsStack, "ArchitectModelIdParam", {
+  parameterName: "/project-manager/architect-model-id",
   stringValue: "PLACEHOLDER",
-  description: "Bedrock agent ID for the architect agent",
+  description: "Bedrock model ID for the architect (e.g., qwen2.5-coder-32b-instruct-v1:0)",
 });
 
 // Stack 2: Conversation pipeline — depends on paramsStack so CDK always
@@ -62,23 +63,46 @@ const busName = ssm.StringParameter.valueForStringParameter(
 );
 const bus = events.EventBus.fromEventBusName(stack, "SharedBus", busName);
 
-// Load the summarizer system prompt from the contract prompt file.
-// The file contains both system and user sections separated by markers —
-// extract just the system prompt portion.
-const summarizerPromptRaw = fs.readFileSync(
-  path.resolve(__dirname, "../contracts/agents/summarizer_prompt.txt"),
-  "utf-8",
-);
-const systemPromptMatch = summarizerPromptRaw.match(
-  /===== SYSTEM PROMPT =====\n([\s\S]*?)(?:\n===== USER TURN =====|$)/,
-);
-const summarizerSystemPrompt = systemPromptMatch
-  ? systemPromptMatch[1].trim()
-  : summarizerPromptRaw.trim();
+// Load system prompts from contract prompt files.
+// Each file contains system and user sections separated by markers.
+function extractSystemPrompt(filePath: string): string {
+  const raw = fs.readFileSync(path.resolve(__dirname, filePath), "utf-8");
+  const match = raw.match(
+    /===== SYSTEM PROMPT =====\n([\s\S]*?)(?:\n===== USER TURN =====|$)/,
+  );
+  return match ? match[1].trim() : raw.trim();
+}
 
-new ConversationPipelineConstruct(stack, "ConversationPipeline", {
+const summarizerSystemPrompt = extractSystemPrompt(
+  "../contracts/agents/summarizer_prompt.txt",
+);
+const architectSystemPrompt = extractSystemPrompt(
+  "../contracts/agents/architect_prompt.txt",
+);
+
+const conversationPipeline = new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
   lambdaCode: lambda.Code.fromAsset(__dirname),
   summarizerAgentSystemPrompt: summarizerSystemPrompt,
+  architectAgentSystemPrompt: architectSystemPrompt,
+});
+
+// Trigger the Step Function when conversation_waiting is emitted
+new events.Rule(stack, "ConversationWaitingRule", {
+  eventBus: bus,
+  eventPattern: {
+    source: ["project-manager.github-event-processor"],
+    detailType: ["project_manager.conversation_waiting"],
+  },
+  targets: [
+    new targets.SfnStateMachine(conversationPipeline.stateMachine, {
+      input: events.RuleTargetInput.fromObject({
+        conversation_id: events.EventField.fromPath("$.detail.data.conversation_id"),
+        actor_id: events.EventField.fromPath("$.detail.data.actor_id"),
+        is_new: events.EventField.fromPath("$.detail.data.is_new"),
+        content: events.EventField.fromPath("$.detail.data.content"),
+      }),
+    }),
+  ],
 });

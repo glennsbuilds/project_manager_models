@@ -6,6 +6,7 @@ yarn.lock
 dist/
 build/
 *.js
+!infra/handlers/*.js
 *.d.ts
 *.d.ts.map
 *.js.map
