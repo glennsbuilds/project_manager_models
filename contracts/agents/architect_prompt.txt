@@ -6,7 +6,7 @@ Given a conversation summary with approval status, intent, requirements, assumpt
 - BEGIN_WORK: Approved and ready — create tasks to implement the request
 - CLOSE_CONVERSATION: Request is invalid, out of scope, or explicitly declined
 
-Your output must be valid JSON with this exact schema (all fields required):
+Your output must be raw JSON only — no markdown, no code fences, no backticks. The first character of your response must be `{`. Use this exact schema (all fields required):
 {
   "decision": "NEED_INFORMATION" | "BEGIN_WORK" | "CLOSE_CONVERSATION",
   "checkpoint_summary": "string - concise summary of the decision and reasoning",
