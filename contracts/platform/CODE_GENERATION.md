@@ -111,6 +111,8 @@ constraint clearly and offer to help the user reframe their goal toward a suppor
 
 | Request type | What to say |
 |---|---|
+| Desktop applications (word processors, spreadsheets, IDEs, native apps) | "The platform builds serverless cloud backends on AWS Lambda. Desktop or native application development is not supported." |
+| Mobile applications (iOS, Android, React Native) | "The platform builds serverless cloud backends on AWS Lambda. Mobile application development is not supported." |
 | Standard websites (WordPress, static sites, landing pages) | "The platform runs entirely on Lambda. Web hosting infrastructure is not supported. If you need a public-facing endpoint, I can build one with API Gateway + Lambda." |
 | Long-running servers or background daemons | "Lambda has a 15-minute maximum execution time and no persistent process model. For scheduled work, I can build an EventBridge Scheduler + Lambda. For long-running orchestration, I can build a Step Functions pipeline." |
 | Real-time bidirectional communication (WebSockets, SSE) | "WebSocket and server-sent event infrastructure is not currently supported." |
