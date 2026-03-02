@@ -37,18 +37,18 @@ This policy defines how code is written and structured on this platform. If a us
 
 ## Service Structure
 
-Every Lambda service follows this directory layout:
+Structure varies by template type. See `contracts/platform/CODE_GENERATION.md` for the template
+type selection guide.
+
+### `sqs-lambda` and `api-gateway`
 
 ```
 lambdas/<service-name>/
   src/
-    handler.ts              — Lambda entry point (do not modify the pipeline)
-    validateAndAuthorize.ts — Input validation and auth
-    executeBusinessLogic.ts — Core business logic (your main implementation target)
-    broadcastEvent.ts       — EventBridge event publishing
-    businessLogicInterface.ts — Shared input type
-    utils.ts                — Inlined utilities (publishCloudEvent, etc.)
-    errors.ts               — Service-specific error types
+    handler.ts              — Factory wiring (createSQSHandler or createAPIGatewayWebhookHandler)
+    executeBusinessLogic.ts — Core business logic: parse input, return ParsedInput
+    broadcastEvent.ts       — Defines ParsedInput interface; conditionally publishCloudEvent
+    handler.test.ts         — Vitest unit tests
   infra/
     app.ts                  — CDK app entry point
     stack.ts                — CDK stack definition
@@ -59,130 +59,124 @@ lambdas/<service-name>/
   collector.yaml            — OTEL collector config (required)
 ```
 
-Do not deviate from this structure. Do not add top-level files that don't fit this layout without approval.
+### `step-function-handler`
+
+```
+lambdas/<pipeline-name>/handlers/
+  <stepName>.ts             — Step handler: export const handler = async (event) => ...
+  <stepName>.test.ts        — Vitest unit tests
+```
+
+Do not deviate from these structures without approval.
 
 ---
 
 ## Handler Pipeline
 
-Every Lambda handler runs the same pipeline. **Do not modify the pipeline itself** — only implement the functions it calls.
+### `sqs-lambda` and `api-gateway` — factory pattern
 
+Handler wiring is provided by `@melodysdad/pm-lambda-layer-utils`. The `handler.ts` file is
+a thin wiring file only — do not add logic to it.
+
+```typescript
+// handler.ts (sqs-lambda)
+import { createSQSHandler } from '@melodysdad/pm-lambda-layer-utils';
+import { validateAndAuthorize } from './validateAndAuthorize';
+import { executeBusinessLogic } from './executeBusinessLogic';
+import { broadcastEvent } from './broadcastEvent';
+
+module.exports = {
+  handler: createSQSHandler('my-handler', { validateAndAuthorize, executeBusinessLogic, broadcastEvent }),
+};
 ```
-handler.ts
-  → validateAndAuthorize()   ← implement: Zod schema validation
-  → executeBusinessLogic()   ← implement: all business logic
-  → broadcastEvent()         ← implement: event payload data field
+
+```typescript
+// handler.ts (api-gateway)
+import { createAPIGatewayWebhookHandler } from '@melodysdad/pm-lambda-layer-utils';
+import { executeBusinessLogic } from './executeBusinessLogic';
+import { broadcastEvent } from './broadcastEvent';
+
+module.exports = {
+  handler: createAPIGatewayWebhookHandler('my-handler', {
+    webhookEvent: 'projects_v2_item',
+    webhookAction: 'edited',
+    webhookSecretName: process.env.WEBHOOK_SECRET_NAME!,
+    executeBusinessLogic,
+    broadcastEvent,
+  }),
+};
 ```
 
-### Your implementation targets
+**Your implementation targets**:
 
-1. **`validateAndAuthorize.ts`** — Define a Zod schema for the input payload. Throw on invalid input.
-2. **`executeBusinessLogic.ts`** — All business work: DynamoDB reads/writes, external API calls, data transformation. Throw on unrecoverable errors.
-3. **`broadcastEvent.ts`** — Call `publishCloudEvent()` with the appropriate event type and data payload.
+1. **`executeBusinessLogic.ts`** — Receives `BusinessLogicInterface`, parses `input.body`, applies
+   business logic, returns a `ParsedInput` object with all typed fields populated.
+2. **`broadcastEvent.ts`** — Exports the `ParsedInput` interface. Receives a `ParsedInput`, reads
+   pre-computed typed fields, conditionally calls `publishCloudEvent`.
 
-The framework (handler.ts) handles: error catching, structured logging, trace context propagation, and the response envelope. Do not duplicate any of that in your implementation.
+The factory (in the layer) handles: HMAC validation, event routing, error catching, structured
+logging, and trace context propagation. Do not re-implement any of that.
 
 ### Handler export
 
-**CRITICAL**: All Lambda handlers must use CommonJS export for ADOT compatibility:
+**CRITICAL**: `sqs-lambda` and `api-gateway` handlers must use CommonJS export for ADOT compatibility:
 
 ```typescript
 // CORRECT
-module.exports = { handler };
+module.exports = { handler: createSQSHandler(...) };
 
 // WRONG — do not use
-export async function handler(...) {}
+export const handler = ...;
 export { handler };
 ```
 
----
+### `step-function-handler` — direct export
 
-## Step Function Handlers
+Step Function handlers do **not** use the factory. They are plain TypeScript files:
 
-Step Function step handlers are **different from Lambda service handlers**. They are plain CommonJS JavaScript files (not TypeScript) located in `infra/handlers/`.
+```typescript
+// handlers/assembleContext.ts
+import { DynamoDBClient, QueryCommand } from '@aws-sdk/client-dynamodb';
 
-```
-infra/handlers/
-  assembleContext.js
-  summarizerAgent.js
-  persistCheckpoint.js
-  emitCheckpointEvent.js
-  ...
-```
+const client = new DynamoDBClient({});
 
-### Pattern
-
-```javascript
-// infra/handlers/myStep.js
-const { SomeClient, SomeCommand } = require('@aws-sdk/client-something');
-
-const client = new SomeClient({});
-
-module.exports.handler = async (event) => {
-  console.log('MyStep', JSON.stringify(event));
-
+export const handler = async (event: HandlerInput): Promise<HandlerOutput> => {
   // Read from event state, do work, return updated state
-  const { conversation_id } = event;
-
-  // ... implementation ...
-
-  return event; // Step Functions chains on the return value
+  // Step Functions uses the return value as the next step's input
 };
 ```
 
 Key rules for Step Function handlers:
-- **CommonJS only** — `require()` and `module.exports`, no `import`/`export`
-- **Return the event** (or a modified version of it) — Step Functions uses the return value as the next step's input
-- **AWS SDK v3** — use `require('@aws-sdk/...')` (available in Lambda runtime, do not bundle)
-- **No TypeScript** — these files are `.js`, not `.ts`
+- Use ES module named export: `export const handler = async ...`
+- Return the full output state — Step Functions chains on the return value
+- Use `@aws-sdk/*` directly (available in Lambda runtime)
+- Do **not** import from `@melodysdad/pm-lambda-layer-utils`
+- Do **not** use `module.exports`
 
 ---
 
 ## Utilities
 
-Do **not** import from `@melodysdad/pm-lambda-layer-utils` or any shared layer package. Each service inlines its own `utils.ts`.
+### `sqs-lambda` and `api-gateway`
 
-The standard `utils.ts` for every Lambda service:
+Import shared utilities from `@melodysdad/pm-lambda-layer-utils`:
 
 ```typescript
-// src/utils.ts
-import { EventBridgeClient, PutEventsCommand } from '@aws-sdk/client-eventbridge';
-
-const eventBridgeClient = new EventBridgeClient({});
-
-export async function publishCloudEvent(
-  eventBusName: string,
-  event: {
-    source: string;
-    type: string;
-    data: any;
-    traceCarrier: Record<string, string>;
-    requestId: string;
-  }
-): Promise<void> {
-  await eventBridgeClient.send(
-    new PutEventsCommand({
-      Entries: [{
-        Source: event.source,
-        DetailType: event.type,
-        Detail: JSON.stringify({
-          specversion: '1.0',
-          id: event.requestId,
-          source: event.source,
-          type: event.type,
-          time: new Date().toISOString(),
-          datacontenttype: 'application/json',
-          traceparent: event.traceCarrier.traceparent,
-          data: event.data,
-        }),
-        EventBusName: eventBusName,
-      }],
-    })
-  );
-}
+import { publishCloudEvent, BusinessLogicInterface } from '@melodysdad/pm-lambda-layer-utils';
 ```
 
-Copy this verbatim into every new service. Do not modify it.
+Available exports:
+- `BusinessLogicInterface` — base input type (`body`, `traceCarrier`, `requestId`)
+- `publishCloudEvent(eventBusName, { source, type, data, traceCarrier?, requestId? })` — CloudEvents publisher
+- `HttpError` — typed HTTP error with `statusCode`
+- `createSQSHandler` — SQS handler factory
+- `createAPIGatewayWebhookHandler` — API Gateway webhook handler factory
+
+Do **not** inline a `utils.ts` with a `publishCloudEvent` implementation. Use the layer.
+
+### `step-function-handler`
+
+Use `@aws-sdk/*` directly. No layer import. No shared utility — each step handler is self-contained.
 
 ---
 

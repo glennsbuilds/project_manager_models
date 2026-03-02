@@ -73,12 +73,43 @@ function extractSystemPrompt(filePath: string): string {
   return match ? match[1].trim() : raw.trim();
 }
 
+function readContract(filePath: string): string {
+  return fs.readFileSync(path.resolve(__dirname, filePath), "utf-8").trim();
+}
+
 const summarizerSystemPrompt = extractSystemPrompt(
   "../contracts/agents/summarizer_prompt.txt",
 );
-const architectSystemPrompt = extractSystemPrompt(
-  "../contracts/agents/architect_prompt.txt",
-);
+
+// The architect system prompt is assembled from the base prompt + injected platform
+// context. Documents are read at CDK synthesis time so every cdk deploy picks up
+// the latest content without any manual sync.
+const architectSystemPrompt = [
+  extractSystemPrompt("../contracts/agents/architect_prompt.txt"),
+  "",
+  "---",
+  "",
+  "## Platform Context",
+  "",
+  "The following documents define the platform you are operating within.",
+  "Read them in full before making any triage decision.",
+  "",
+  "---",
+  "",
+  readContract("../contracts/platform/ARCHITECTURE.md"),
+  "",
+  "---",
+  "",
+  readContract("../contracts/policies/infrastructure.md"),
+  "",
+  "---",
+  "",
+  readContract("../contracts/platform/CODE_GENERATION.md"),
+  "",
+  "---",
+  "",
+  readContract("../contracts/platform/APPLICATION_CATALOG.md"),
+].join("\n");
 
 const conversationPipeline = new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,

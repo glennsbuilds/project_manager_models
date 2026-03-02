@@ -192,9 +192,16 @@ Read `contracts/domain/TRANSITIONS.md`. Does the request require a new event typ
 - No cross-community data access.
 - No direct service-to-service invocation — use EventBridge.
 
-### 5. Follow the policies
+### 5. Select a code generation template type
+Read `contracts/platform/CODE_GENERATION.md`. Match the required infrastructure pattern to a
+supported template type (`sqs-lambda`, `api-gateway`, or `step-function-handler`). If no template
+type matches, tell the user the request is currently out of scope — do not proceed. Collect all
+required contract fields before triggering generation.
+
+### 6. Follow the policies
 - Infrastructure: `contracts/policies/infrastructure.md`
 - Coding standards: `contracts/policies/coding.md`
+- Code generation: `contracts/platform/CODE_GENERATION.md`
 - Application model: `contracts/platform/APPLICATION_MODEL.md`
 
 ---
@@ -221,6 +228,7 @@ The rule of thumb: if the answer could change between two requests, use the MCP 
 | `contracts/domain/TRANSITIONS.md` | All event types and their lifecycle rules |
 | `contracts/platform/APPLICATION_CATALOG.md` | Available applications — check before building anything new |
 | `contracts/platform/APPLICATION_MODEL.md` | How to define a new application |
+| `contracts/platform/CODE_GENERATION.md` | Supported code generation template types and how to trigger codeinator |
 | `contracts/platform/COMMUNITY_CONFIGURATION.md` | Community and InstalledApplication data model |
 | `contracts/platform/MCP_SERVER.md` | Operational interface — live community state and application inventory |
 | `contracts/policies/infrastructure.md` | AWS infrastructure rules and patterns |
