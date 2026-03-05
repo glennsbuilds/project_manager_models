@@ -13,7 +13,7 @@ When a user requests new functionality:
 - Check the `provides` field of each application to see if the capability already exists
 - Check the `description` for intent match — a user asking for "task tracking" may be served by an existing application even if they didn't use that exact phrase
 - If an existing application partially covers the need, surface that to the user before proposing new work
-- If nothing matches, proceed with designing a new application per `contracts/platform/APPLICATION_MODEL.md`
+- If nothing matches, trigger codeinator to generate the required Lambda code. See `contracts/platform/CODE_GENERATION.md` for supported template types and how to fire a `begin-work` event. Do NOT ask about manifests, folder layouts, or deployment locations — codeinator handles all of that.
 
 ---
 
@@ -44,7 +44,6 @@ requires:
 intake_mechanisms:
   - github-projects-v2
 repository: project_manager_lambda + project_manager_models
-manifest: contracts/platform/APPLICATION_MODEL.md
 ```
 
 ---
@@ -54,9 +53,8 @@ manifest: contracts/platform/APPLICATION_MODEL.md
 When a new application is ready to publish:
 
 1. Add an entry to this file following the format above
-2. Ensure the application has a manifest in its repository following `contracts/platform/APPLICATION_MODEL.md`
-3. Set `status: active` only when the application is deployed and installable
-4. Use `status: preview` for applications that are functional but not yet recommended for general use
+2. Set `status: active` only when the application is deployed and installable
+3. Use `status: preview` for applications that are functional but not yet recommended for general use
 
 ## Status Values
 

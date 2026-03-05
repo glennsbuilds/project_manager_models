@@ -222,43 +222,45 @@ The actor - human or AI - records a progress update (via external systems or tas
 
 #### **Description**
 
-A message has been added to the conversation - from either the human or AI actor.
+A new activity item on a GitHub Projects V2 board has been processed by the ingress layer and is ready for the conversation pipeline.
 
 #### **Trigger**
 
-* Human messages: External ingress microservice processes incoming message from user.
-* AI messages: LLM interface service processes and responds to conversation.
+* `github_trigger` receives a GitHub webhook event where the `Status` field of a Projects V2 item is changed to `"Ready"`. This signals that the human has submitted or updated a request for processing.
 
 #### **Preconditions**
 
-* A conversation with the given `conversation_id` exists
-* An actor with the given `actor_id` exists
+* The GitHub Projects V2 item exists and has a linked issue or pull request.
 
 #### **State Changes**
 
-* A new `Message` entity is created with `id`, `time`, `actor_id`, `conversation_id`, and `content`.
-* Optionally includes `task_id` if the message is related to a specific task.
-* Optionally includes `external_identity` for correlation with external systems.
+* None at the time this event is emitted. State changes (Conversation, Actor, Message records) are made downstream by `github_event_processor`.
 
 #### **Fact Emitted**
 
+Source: `project-manager.github-trigger`
+
 * `project_manager.message.added`
-  * id
-  * time
-  * actor_id
-  * conversation_id
-  * task_id (optional)
-  * content
-  * external_identity (optional)
+  * `type`: always `"status_change"`
+  * `field_name`: the project field that changed (always `"Status"`)
+  * `from_value`: previous status name, or `null` if none
+  * `to_value`: new status name (always `"Ready"` for this transition)
+  * `item_node_id`: GitHub Projects V2 item node ID (format: `PVTI_...`)
+  * `sender_login`: GitHub username of the person who made the change
+  * `organization_login` (optional): GitHub org login if the project is org-owned
+
+#### **Downstream Consumers**
+
+* **`github_event_processor`**: subscribes to this event, resolves or creates the Conversation and Actor in DynamoDB, fetches issue/comment content from GitHub, and emits `project_manager.conversation_waiting` to trigger the conversation pipeline.
 
 #### **Facts NOT Emitted**
 
-* No new conversations, tasks, or checkpoints are created by this event
+* No new conversations, tasks, or checkpoints are created by this event directly.
 
 #### **Invariants**
 
-* Messages are immutable once created.
-* Messages in and of themselves do not result in change of state for the conversation.
+* Only fires when a GitHub Projects V2 item Status changes to `"Ready"`.
+* The `item_node_id` is stable for the lifetime of the project item and can be used to look up the Conversation record.
 
 
 ### **Transition: `ApplicationInstalled`** *(FUTURE WORK)*

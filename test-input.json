@@ -1,0 +1,19 @@
+{
+  "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
+  "actor_id": "550e8400-e29b-41d4-a716-446655440002",
+  "is_new": true,
+  "content": [
+    {
+      "author": "user123",
+      "body": "I want to add a recent activity section to the user dashboard showing the last 20 user actions with timestamps.",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "type": "comment"
+    },
+    {
+      "author": "user123",
+      "body": "Actually, make that the last 20 actions instead of 10, and add filtering by action type.",
+      "timestamp": "2024-01-15T10:35:00Z",
+      "type": "comment"
+    }
+  ]
+}

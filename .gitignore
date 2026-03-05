@@ -48,3 +48,4 @@ Thumbs.db
 
 # Generated files
 src/generated/
+cdk.out

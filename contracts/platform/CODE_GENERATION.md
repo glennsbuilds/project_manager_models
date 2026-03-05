@@ -43,6 +43,23 @@ EventBridge rule → SQS queue → Lambda
 | `parsedInputSpec` | TypeScript `ParsedInput` interface extending `BusinessLogicInterface` |
 | `samplePayloads` | Representative SQS message payloads for test generation |
 
+**Deriving `parsedInputSpec`**: The fields listed under "Fact Emitted" in TRANSITIONS.md are the `data` fields delivered to your Lambda. Map each field directly to a TypeScript property in your `ParsedInput` interface. Optional fields become `field?: type`.
+
+Example — `project_manager.message.added` event:
+```typescript
+import { BusinessLogicInterface } from '@melodysdad/pm-lambda-layer-utils';
+
+export interface ParsedInput extends BusinessLogicInterface {
+  type: string;
+  field_name: string;
+  from_value: string | null;
+  to_value: string;
+  item_node_id: string;
+  sender_login: string;
+  organization_login?: string;
+}
+```
+
 ---
 
 ### `api-gateway`
@@ -155,6 +172,25 @@ When you have collected all required contract fields, upload the contract to S3 
 
 `webhookEvent` and `webhookAction` are only meaningful for `api-gateway`. Pass empty strings for
 `sqs-lambda` and `step-function-handler`.
+
+---
+
+## Shared Infrastructure References
+
+When writing behavioral contracts, **never** ask the user for resource names or ARNs. All shared infrastructure is accessed via SSM parameters documented in `infrastructure.md`:
+
+| Resource | SSM Parameter | Example Usage in Contract |
+|----------|---------------|---------------------------|
+| EventBridge bus | `/project-manager/event-bus-name` | "Reads event bus name from SSM parameter `/project-manager/event-bus-name` and publishes events to it" |
+| DynamoDB table | `/project-manager/dynamodb-table-name` | "Reads table name from SSM parameter `/project-manager/dynamodb-table-name` and queries for conversation metadata" |
+| GitHub token | `/project-manager/github-token-secret-name` | "Reads GitHub PAT from Secrets Manager using name from SSM parameter `/project-manager/github-token-secret-name`" |
+
+**The codeinator CDK stack will automatically**:
+- Read the SSM parameter values at synth time
+- Inject them as environment variables into the Lambda
+- Grant IAM permissions to access them
+
+Your behavioral contract should describe **what** the Lambda does (e.g., "publishes events to the shared event bus"), not **how** to reference it in CDK. That's handled automatically.
 
 ---
 

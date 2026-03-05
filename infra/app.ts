@@ -109,6 +109,14 @@ const architectSystemPrompt = [
   "---",
   "",
   readContract("../contracts/platform/APPLICATION_CATALOG.md"),
+  "",
+  "---",
+  "",
+  readContract("../contracts/domain/PRIMITIVES.md"),
+  "",
+  "---",
+  "",
+  readContract("../contracts/domain/TRANSITIONS.md"),
 ].join("\n");
 
 const conversationPipeline = new ConversationPipelineConstruct(stack, "ConversationPipeline", {

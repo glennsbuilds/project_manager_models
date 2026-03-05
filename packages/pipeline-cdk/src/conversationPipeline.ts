@@ -452,7 +452,7 @@ export class ConversationPipelineConstruct extends Construct {
           }],
         }],
         InferenceConfig: {
-          MaxTokens: 4096,
+          MaxTokens: 8192,
           Temperature: 0,
         },
       },
