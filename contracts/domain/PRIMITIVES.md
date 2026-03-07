@@ -17,6 +17,7 @@
 - Task
 - TaskCheckpoint
 - InstalledApplication
+- ServiceRegistry
 
 **Future Work:**
 - *(none)*
@@ -139,6 +140,21 @@ See `contracts/platform/APPLICATION_MODEL.md` for the application manifest defin
 * installed_at: timestamp
 * updated_at: timestamp
 
+### ServiceRegistry
+
+Records a deployed service and its current state. Persisted to the shared DynamoDB table.
+
+#### Fields
+
+* id: GUID
+* name: string
+* description: string
+* cdk_stack_name: string
+* status: ENUM(PROVISIONING | ACTIVE | UPDATING | FAILED | DECOMMISSIONED)
+* tags: [{ key: string, value: string }]
+* created_at: timestamp
+* updated_at: timestamp
+
 ## Stores
 
 Interfaces for services that receive and persist primitives:
@@ -151,3 +167,4 @@ Interfaces for services that receive and persist primitives:
 * TaskCheckpointStore
 * CommunityStore
 * InstalledApplicationStore
+* ServiceRegistryStore
