@@ -10,6 +10,7 @@ import { fileURLToPath } from "url";
 import {
   ConversationPipelineConstruct,
 } from "../packages/pipeline-cdk/src/conversationPipeline";
+import { ProjectManagerBaseInfraStack } from "./baseInfraStack.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +21,13 @@ const commonTags = {
   project: "project-manager",
   environment: "production",
 };
+
+// Stack 0: Shared base infrastructure — EventBridge bus, DynamoDB table, and
+// SSM parameters that all other stacks discover resources through.
+new ProjectManagerBaseInfraStack(app, "ProjectManagerBaseInfra", {
+  env: commonEnv,
+  tags: commonTags,
+});
 
 // Stack 1: SSM parameters — deployed first so they exist before the pipeline
 // stack references them via CloudFormation dynamic references.
