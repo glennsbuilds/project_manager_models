@@ -1,12 +1,12 @@
 /**
- * @melodysdad/pm-pipeline-cdk
+ * @glennsbuilds/pm-pipeline-cdk
  *
  * Generated CDK constructs for project manager pipelines.
  * Auto-generated from contracts/services/ - do not edit manually.
  *
  * @example
  * ```typescript
- * import { ConversationPipelineConstruct } from '@melodysdad/pm-pipeline-cdk';
+ * import { ConversationPipelineConstruct } from '@glennsbuilds/pm-pipeline-cdk';
  *
  * const pipeline = new ConversationPipelineConstruct(this, 'ConversationPipeline', {
  *   dynamoTable: table,

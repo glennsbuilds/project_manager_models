@@ -157,161 +157,79 @@ steps:
       interval_seconds: 5
     timeout_seconds: 120
 
-  - name: ArchitectAgent
+  - name: RouterAgent
     type: BedrockConverse
-    model_id_env: ARCHITECT_MODEL_ID
-    prompt_contract: ../agents/architect.md
+    model_id_env: ROUTER_MODEL_ID
+    prompt_contract: ../agents/router_prompt.txt
     description: >
-      Evaluates the summarized conversation and makes a triage decision.
-      Determines if there's enough information to begin work, or if the
-      pipeline should go back to the user. See agents/architect.md for the
-      full prompt contract. Invokes the model directly via the Bedrock
-      Converse API — no Bedrock Agent required.
+      Pure classifier — always routes, never asks for information or rejects.
+      Classifies the task type (coding, shopping-list, etc.) and routes to the
+      appropriate downstream service. NEED_INFORMATION and CLOSE_CONVERSATION
+      decisions are the responsibility of downstream services (e.g., the
+      architect agent in the codeinator for coding tasks).
     input: "$.summary"
-    user_message_template: "Here is the conversation summary:\n\n{}\n\nMake a triage decision: NEED_INFORMATION, BEGIN_WORK, or CLOSE_CONVERSATION."
+    user_message_template: "Here is the conversation summary:\n\n{}\n\nClassify the task type."
     pass_through:
       - conversation_id
       - actor_id
+      - summary
     output:
       - name: conversation_id
         type: GUID
-      - name: decision
-        type: enum
-        values: [NEED_INFORMATION, BEGIN_WORK, CLOSE_CONVERSATION]
+      - name: actor_id
+        type: GUID
+      - name: summary
+        type: object
+      - name: taskType
+        type: string
       - name: checkpoint_summary
         type: string
-      - name: response_to_user
-        type: string
-        optional: true
-      - name: tasks
-        type: array
-        optional: true
-        items:
-          - name: instructions
-            type: string
     retry:
       max_attempts: 3
       backoff_rate: 2
       interval_seconds: 5
     timeout_seconds: 120
 
-  - name: RouteOnDecision
-    type: Choice
-    input_field: "$.decision"
-    branches:
-      - match: NEED_INFORMATION
-        goto: BranchNeedInformation
-      - match: BEGIN_WORK
-        goto: BranchBeginWork
-      - match: CLOSE_CONVERSATION
-        goto: BranchCloseConversation
-    default: FAIL
+  - name: PersistCheckpoint
+    type: Lambda
+    description: Create a ROUTED ConversationCheckpoint
+    writes:
+      - store: CheckpointStore
+        entity: ConversationCheckpoint
+        fields:
+          conversation_id: "$.conversation_id"
+          checkpoint_type: ROUTED
+          summary: "$.checkpoint_summary"
+
+  - name: EmitEvents
+    type: Lambda
+    description: Publish checkpoint.created and task.routed events
+    emits:
+      - event: project_manager.conversation.checkpoint.created
+        transition: ConversationCheckpointCreated
+      - event: project_manager.task.routed
+        description: >
+          Routes the task to a downstream service based on taskType.
+          Downstream consumers filter on detail.taskType to receive
+          only relevant events (e.g., codeinator filters on "coding").
+        fields:
+          conversation_id: "$.conversation_id"
+          actor_id: "$.actor_id"
+          taskType: "$.taskType"
+          summary: "$.summary"
+
+  - name: End
+    type: Succeed
 ```
 
 ### Branches
 
-```yaml
-branches:
-  - name: BranchNeedInformation
-    steps:
-      - name: PersistCheckpoint
-        type: Lambda
-        description: Create a NEED_INFORMATION ConversationCheckpoint
-        writes:
-          - store: CheckpointStore
-            entity: ConversationCheckpoint
-            fields:
-              conversation_id: "$.conversation_id"
-              checkpoint_type: NEED_INFORMATION
-              summary: "$.checkpoint_summary"
-      - name: PersistMessage
-        type: Lambda
-        description: Create a Message from the AI response
-        writes:
-          - store: MessageStore
-            entity: Message
-            fields:
-              actor_id: AI_ACTOR
-              conversation_id: "$.conversation_id"
-              content: "$.response_to_user"
-      - name: EmitCheckpointEvent
-        type: Lambda
-        description: Publish checkpoint.created event to EventBridge
-        emits:
-          - event: project_manager.conversation.checkpoint.created
-            transition: ConversationCheckpointCreated
-      - name: End
-        type: Succeed
+_No branching — the router is a pure classifier that always routes. The pipeline
+follows a linear path: AssembleContext → Summarize → Classify → PersistCheckpoint → EmitEvents → Succeed._
 
-  - name: BranchBeginWork
-    steps:
-      - name: PersistCheckpoint
-        type: Lambda
-        description: Create a BEGIN_WORK ConversationCheckpoint
-        writes:
-          - store: CheckpointStore
-            entity: ConversationCheckpoint
-            fields:
-              conversation_id: "$.conversation_id"
-              checkpoint_type: BEGIN_WORK
-              summary: "$.ArchitectAgent.output.checkpoint_summary"
-      - name: PersistTasks
-        type: Lambda  # Map state over $.ArchitectAgent.output.tasks
-        description: Create Task entities for each task instruction
-        writes:
-          - store: TaskStore
-            entity: Task
-            fields:
-              conversation_id: "$.conversation_id"
-              checkpoint_id: "$.PersistCheckpoint.output.checkpoint_id"
-              instructions: "$.instructions"
-      - name: EmitEvents
-        type: Lambda
-        description: Publish checkpoint.created and task.created events
-        emits:
-          - event: project_manager.conversation.checkpoint.created
-            transition: ConversationCheckpointCreated
-          - event: project_manager.task.created
-            transition: TaskCreated
-            per_item: true
-      - name: InvokeCodingAgents
-        type: Placeholder
-        description: "FUTURE WORK — Fan out to coding agent executions per task"
-      - name: End
-        type: Succeed
-
-  - name: BranchCloseConversation
-    steps:
-      - name: PersistCheckpoint
-        type: Lambda
-        description: Create a CLOSE_CONVERSATION ConversationCheckpoint
-        writes:
-          - store: CheckpointStore
-            entity: ConversationCheckpoint
-            fields:
-              conversation_id: "$.conversation_id"
-              checkpoint_type: CLOSE_CONVERSATION
-              summary: "$.checkpoint_summary"
-      - name: PersistMessage
-        type: Lambda
-        description: Create a Message if response_to_user is provided
-        condition: "$.response_to_user != null"
-        writes:
-          - store: MessageStore
-            entity: Message
-            fields:
-              actor_id: AI_ACTOR
-              conversation_id: "$.conversation_id"
-              content: "$.response_to_user"
-      - name: EmitCheckpointEvent
-        type: Lambda
-        description: Publish checkpoint.created event to EventBridge
-        emits:
-          - event: project_manager.conversation.checkpoint.created
-            transition: ConversationCheckpointCreated
-      - name: End
-        type: Succeed
-```
+_NEED_INFORMATION and CLOSE_CONVERSATION decisions are handled by downstream
+services (e.g., the architect agent in the codeinator) which emit their own
+checkpoint events back to the event bus._
 
 ### Agents
 
@@ -327,13 +245,14 @@ agents:
       Invokes model directly via Bedrock Converse API in the Step Function.
       System prompt passed as a construct prop at deployment time.
 
-  - name: ArchitectAgent
+  - name: RouterAgent
     type: BedrockConverse
-    model_id_env: ARCHITECT_MODEL_ID
-    prompt_contract: ../agents/architect.md
+    model_id_env: ROUTER_MODEL_ID
+    prompt_contract: ../agents/router_prompt.txt
     description: >
-      Evaluates summarized conversation and makes triage decisions.
-      Prompt contract: contracts/agents/architect.md
+      Pure classifier — always routes, never asks for information or rejects.
+      Classifies the task type for routing to downstream services.
+      Prompt contract: contracts/agents/router_prompt.txt
       Invokes model directly via Bedrock Converse API in the Step Function.
       System prompt passed as a construct prop at deployment time.
 ```
@@ -351,9 +270,9 @@ environment:
   - name: SUMMARIZER_MODEL_ID
     source: ssm
     parameter: /project-manager/summarizer-model-id
-  - name: ARCHITECT_MODEL_ID
+  - name: ROUTER_MODEL_ID
     source: ssm
-    parameter: /project-manager/architect-model-id
+    parameter: /project-manager/router-model-id
 ```
 
 ### Error Handling
@@ -376,17 +295,13 @@ error_handling:
     on_failure: FAIL_EXECUTION
     notes: "Direct Bedrock Converse API call — may fail on model throttling, timeouts"
 
-  - step: ArchitectAgent
+  - step: RouterAgent
     retry:
       max_attempts: 3
       backoff_rate: 2
       interval_seconds: 5
     on_failure: FAIL_EXECUTION
     notes: "Direct Bedrock Converse API call — may fail on model throttling, timeouts"
-
-  - step: RouteOnDecision
-    default: FAIL_EXECUTION
-    notes: "Unknown decision value from architect agent"
 
   - step: "*Persist*"
     retry:
@@ -410,7 +325,7 @@ error_handling:
 - The `conversation_waiting` event is the **single entry point** for all conversation processing — whether the conversation is new or the user is responding after a `NEED_INFORMATION` round-trip.
 - The conversation assembler service contract (previously `conversation_assembler.md`, now deleted) is superseded by the AssembleContext step of this pipeline.
 - Standard Step Function (not Express) is required because agent invocations may take 30+ seconds and the total pipeline may run for several minutes.
-- The summarizer and architect are separate agents to maintain single-responsibility and allow independent iteration on their prompts and capabilities. They could be collapsed into a single agent if the separation proves unnecessary.
+- The summarizer and router are separate agents to maintain single-responsibility and allow independent iteration on their prompts and capabilities. The router is a pure classifier — it always routes, never asks for information or rejects requests. NEED_INFORMATION and CLOSE_CONVERSATION decisions are the responsibility of downstream services. Domain-specific planning (e.g., the architect agent for coding tasks) is the responsibility of the downstream service (e.g., the codeinator).
 - The pipeline never posts directly to GitHub or any other source. Outbound communication is triggered by the `project_manager.conversation.checkpoint.created` event — an outbound service listens for relevant checkpoint types (`NEED_INFORMATION`, `WORK_COMPLETED`, `CLOSE_CONVERSATION`) and handles the source-specific posting.
 
 ## Idempotency

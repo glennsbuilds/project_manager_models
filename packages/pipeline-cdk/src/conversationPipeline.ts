@@ -61,9 +61,9 @@ export interface ConversationPipelineProps {
   readonly summarizerAgentSystemPrompt: string;
 
   /**
-   * System prompt for the ArchitectAgent step (Bedrock Converse API).
+   * System prompt for the RouterAgent step (Bedrock Converse API).
    */
-  readonly architectAgentSystemPrompt: string;
+  readonly routerAgentSystemPrompt: string;
 
   // SSM parameter path overrides (defaults shown)
 
@@ -83,9 +83,9 @@ export interface ConversationPipelineProps {
   readonly summarizerModelIdSsmPath?: string;
 
   /**
-   * SSM path for ARCHITECT_MODEL_ID. Defaults to "/project-manager/architect-model-id".
+   * SSM path for ROUTER_MODEL_ID. Defaults to "/project-manager/router-model-id".
    */
-  readonly architectModelIdSsmPath?: string;
+  readonly routerModelIdSsmPath?: string;
 
 }
 
@@ -95,7 +95,6 @@ export class ConversationPipelineConstruct extends Construct {
   public readonly persistCheckpointFn: lambda.Function;
   public readonly persistMessageFn: lambda.Function;
   public readonly emitCheckpointEventFn: lambda.Function;
-  public readonly persistTasksFn: lambda.Function;
   public readonly emitEventsFn: lambda.Function;
 
   constructor(scope: Construct, id: string, props: ConversationPipelineProps) {
@@ -118,9 +117,9 @@ export class ConversationPipelineConstruct extends Construct {
       this,
       props.summarizerModelIdSsmPath ?? "/project-manager/summarizer-model-id",
     );
-    const architectModelIdParam = ssm.StringParameter.valueForStringParameter(
+    const routerModelIdParam = ssm.StringParameter.valueForStringParameter(
       this,
-      props.architectModelIdSsmPath ?? "/project-manager/architect-model-id",
+      props.routerModelIdSsmPath ?? "/project-manager/router-model-id",
     );
 
     // --- Lambda functions ---
@@ -185,22 +184,7 @@ export class ConversationPipelineConstruct extends Construct {
       tracing: lambda.Tracing.ACTIVE,
     });
 
-    // Create Task entities for each task instruction
-    this.persistTasksFn = new lambda.Function(this, "PersistTasksFunction", {
-      runtime,
-      memorySize,
-      timeout: timeout,
-      handler: "handlers/persistTasks.handler",
-      code: props.lambdaCode,
-      layers: props.lambdaLayers,
-      environment: {
-        EVENT_BUS_NAME: eventBusNameParam,
-        DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
-      },
-      tracing: lambda.Tracing.ACTIVE,
-    });
-
-    // Publish checkpoint.created and task.created events
+    // Publish checkpoint.created and task.routed events
     this.emitEventsFn = new lambda.Function(this, "EmitEventsFunction", {
       runtime,
       memorySize,
@@ -222,8 +206,11 @@ export class ConversationPipelineConstruct extends Construct {
       cause: "An unrecoverable error occurred in the pipeline",
     });
 
-    // Branch: BranchNeedInformation
-    const branchNeedInformationPersistCheckpointTask = new tasks.LambdaInvoke(this, "BranchNeedInformation-PersistCheckpoint", {
+    // After routing: persist checkpoint, emit task.routed event, succeed.
+    // The router is a pure classifier — it always routes, never asks for info.
+    // NEED_INFORMATION and CLOSE_CONVERSATION decisions are the responsibility
+    // of downstream services (e.g., the architect agent in the codeinator).
+    const persistCheckpointTask = new tasks.LambdaInvoke(this, "PersistCheckpoint", {
       lambdaFunction: this.persistCheckpointFn,
       outputPath: "$.Payload",
     })
@@ -236,67 +223,7 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
-    const branchNeedInformationPersistMessageTask = new tasks.LambdaInvoke(this, "BranchNeedInformation-PersistMessage", {
-      lambdaFunction: this.persistMessageFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchNeedInformationEmitCheckpointEventTask = new tasks.LambdaInvoke(this, "BranchNeedInformation-EmitCheckpointEvent", {
-      lambdaFunction: this.emitCheckpointEventFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchNeedInformationSucceed = new sfn.Succeed(this, "BranchNeedInformationSucceed");
-
-    const branchNeedInformationChain = branchNeedInformationPersistCheckpointTask
-      .next(branchNeedInformationPersistMessageTask)
-      .next(branchNeedInformationEmitCheckpointEventTask)
-      .next(branchNeedInformationSucceed);
-
-    // Branch: BranchBeginWork
-    const branchBeginWorkPersistCheckpointTask = new tasks.LambdaInvoke(this, "BranchBeginWork-PersistCheckpoint", {
-      lambdaFunction: this.persistCheckpointFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchBeginWorkPersistTasksTask = new tasks.LambdaInvoke(this, "BranchBeginWork-PersistTasks", {
-      lambdaFunction: this.persistTasksFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchBeginWorkEmitEventsTask = new tasks.LambdaInvoke(this, "BranchBeginWork-EmitEvents", {
+    const emitEventsTask = new tasks.LambdaInvoke(this, "EmitEvents", {
       lambdaFunction: this.emitEventsFn,
       outputPath: "$.Payload",
     })
@@ -309,59 +236,7 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
-    const branchBeginWorkSucceed = new sfn.Succeed(this, "BranchBeginWorkSucceed");
-
-    const branchBeginWorkChain = branchBeginWorkPersistCheckpointTask
-      .next(branchBeginWorkPersistTasksTask)
-      .next(branchBeginWorkEmitEventsTask)
-      .next(branchBeginWorkSucceed);
-
-    // Branch: BranchCloseConversation
-    const branchCloseConversationPersistCheckpointTask = new tasks.LambdaInvoke(this, "BranchCloseConversation-PersistCheckpoint", {
-      lambdaFunction: this.persistCheckpointFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchCloseConversationPersistMessageTask = new tasks.LambdaInvoke(this, "BranchCloseConversation-PersistMessage", {
-      lambdaFunction: this.persistMessageFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchCloseConversationEmitCheckpointEventTask = new tasks.LambdaInvoke(this, "BranchCloseConversation-EmitCheckpointEvent", {
-      lambdaFunction: this.emitCheckpointEventFn,
-      outputPath: "$.Payload",
-    })
-      .addRetry({
-        maxAttempts: 3,
-        backoffRate: 2,
-        interval: cdk.Duration.seconds(1),
-      })
-      .addCatch(failState, {
-        resultPath: "$.error",
-      });
-
-    const branchCloseConversationSucceed = new sfn.Succeed(this, "BranchCloseConversationSucceed");
-
-    const branchCloseConversationChain = branchCloseConversationPersistCheckpointTask
-      .next(branchCloseConversationPersistMessageTask)
-      .next(branchCloseConversationEmitCheckpointEventTask)
-      .next(branchCloseConversationSucceed);
+    const pipelineSucceed = new sfn.Succeed(this, "PipelineSucceed");
 
     const assembleContextTask = new tasks.LambdaInvoke(this, "AssembleContext", {
       lambdaFunction: this.assembleContextFn,
@@ -432,27 +307,28 @@ export class ConversationPipelineConstruct extends Construct {
       },
     });
 
-    // Evaluates the summarized conversation and makes a triage decision. Determines if there's enough information to begin work, or if the pipeline should go back to the user. See agents/architect.md for the full prompt contract. Invokes the model directly via the Bedrock Converse API — no Bedrock Agent required.
-    // Step 1: Invoke model via Bedrock Converse API
-    const architectAgentConverseTask = new tasks.CallAwsService(this, "ArchitectAgentConverse", {
+    // Classifies the task type for routing to downstream services.
+    // Pure classifier — always routes, never asks for information or rejects.
+    // See agents/router_prompt.txt for the full prompt contract.
+    const routerAgentConverseTask = new tasks.CallAwsService(this, "RouterAgentConverse", {
       service: "bedrockruntime",
       action: "converse",
       parameters: {
-        ModelId: architectModelIdParam,
+        ModelId: routerModelIdParam,
         System: [{
-          Text: props.architectAgentSystemPrompt,
+          Text: props.routerAgentSystemPrompt,
         }],
         Messages: [{
           Role: "user",
           Content: [{
             Text: sfn.JsonPath.format(
-              "Here is the conversation summary:\n\n{}\n\nMake a triage decision: NEED_INFORMATION, BEGIN_WORK, or CLOSE_CONVERSATION.",
+              "Here is the conversation summary:\n\n{}\n\nClassify the task type.",
               sfn.JsonPath.stringAt("$.summary"),
             ),
           }],
         }],
         InferenceConfig: {
-          MaxTokens: 8192,
+          MaxTokens: 4096,
           Temperature: 0,
         },
       },
@@ -470,50 +346,37 @@ export class ConversationPipelineConstruct extends Construct {
         resultPath: "$.error",
       });
 
-    // Step 2a: Parse model JSON response
-    const architectAgentParseState = new sfn.Pass(this, "ArchitectAgentParse", {
+    // Step 2a: Parse model JSON response — preserve summary for downstream routing
+    const routerAgentParseState = new sfn.Pass(this, "RouterAgentParse", {
       parameters: {
         "conversation_id.$": "$.conversation_id",
         "actor_id.$": "$.actor_id",
+        "summary.$": "$.summary",
         "parsed.$": "States.StringToJson($.modelResponse.Output.Message.Content[0].Text)",
       },
     });
 
     // Step 2b: Extract fields from parsed response
-    const architectAgentReshapeState = new sfn.Pass(this, "ArchitectAgentReshape", {
+    const routerAgentReshapeState = new sfn.Pass(this, "RouterAgentReshape", {
       parameters: {
         "conversation_id.$": "$.conversation_id",
         "actor_id.$": "$.actor_id",
-        "decision.$": "$.parsed.decision",
+        "summary.$": "$.summary",
+        "taskType.$": "$.parsed.taskType",
         "checkpoint_summary.$": "$.parsed.checkpoint_summary",
-        "response_to_user.$": "$.parsed.response_to_user",
-        "tasks.$": "$.parsed.tasks",
       },
     });
-
-    const routeOnDecisionChoice = new sfn.Choice(this, "RouteOnDecision")
-      .when(
-        sfn.Condition.stringEquals("$.decision", "NEED_INFORMATION"),
-        branchNeedInformationChain,
-      )
-      .when(
-        sfn.Condition.stringEquals("$.decision", "BEGIN_WORK"),
-        branchBeginWorkChain,
-      )
-      .when(
-        sfn.Condition.stringEquals("$.decision", "CLOSE_CONVERSATION"),
-        branchCloseConversationChain,
-      )
-      .otherwise(failState);
 
     const definition = assembleContextTask
       .next(summarizerAgentConverseTask)
       .next(summarizerAgentParseState)
       .next(summarizerAgentReshapeState)
-      .next(architectAgentConverseTask)
-      .next(architectAgentParseState)
-      .next(architectAgentReshapeState)
-      .next(routeOnDecisionChoice);
+      .next(routerAgentConverseTask)
+      .next(routerAgentParseState)
+      .next(routerAgentReshapeState)
+      .next(persistCheckpointTask)
+      .next(emitEventsTask)
+      .next(pipelineSucceed);
 
     // State machine
     const logGroup = new logs.LogGroup(this, "StateMachineLogGroup", {
@@ -545,9 +408,6 @@ export class ConversationPipelineConstruct extends Construct {
 
     props.dynamoTable.grantReadWriteData(this.emitCheckpointEventFn);
     props.eventBus.grantPutEventsTo(this.emitCheckpointEventFn);
-
-    props.dynamoTable.grantReadWriteData(this.persistTasksFn);
-    props.eventBus.grantPutEventsTo(this.persistTasksFn);
 
     props.dynamoTable.grantReadWriteData(this.emitEventsFn);
     props.eventBus.grantPutEventsTo(this.emitEventsFn);

@@ -120,7 +120,7 @@ export const lambdaHandler = (event: any) => handler.handle(event);
  *   },
  *   "changes": {
  *     "title": {
- *       "from": "@melodysdad's untitled project",
+ *       "from": "@glennsbuilds's untitled project",
  *       "to": "project_manager"
  *     }
  *   },

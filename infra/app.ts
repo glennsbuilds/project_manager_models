@@ -43,10 +43,10 @@ new ssm.StringParameter(paramsStack, "SummarizerModelIdParam", {
   description: "Bedrock model ID for the summarizer (e.g., qwen2.5-coder-32b-instruct-v1:0)",
 });
 
-new ssm.StringParameter(paramsStack, "ArchitectModelIdParam", {
-  parameterName: "/project-manager/architect-model-id",
+new ssm.StringParameter(paramsStack, "RouterModelIdParam", {
+  parameterName: "/project-manager/router-model-id",
   stringValue: "PLACEHOLDER",
-  description: "Bedrock model ID for the architect (e.g., qwen2.5-coder-32b-instruct-v1:0)",
+  description: "Bedrock model ID for the router (e.g., qwen2.5-coder-32b-instruct-v1:0)",
 });
 
 // Stack 2: Conversation pipeline — depends on paramsStack so CDK always
@@ -81,58 +81,23 @@ function extractSystemPrompt(filePath: string): string {
   return match ? match[1].trim() : raw.trim();
 }
 
-function readContract(filePath: string): string {
-  return fs.readFileSync(path.resolve(__dirname, filePath), "utf-8").trim();
-}
-
 const summarizerSystemPrompt = extractSystemPrompt(
   "../contracts/agents/summarizer_prompt.txt",
 );
 
-// The architect system prompt is assembled from the base prompt + injected platform
-// context. Documents are read at CDK synthesis time so every cdk deploy picks up
-// the latest content without any manual sync.
-const architectSystemPrompt = [
-  extractSystemPrompt("../contracts/agents/architect_prompt.txt"),
-  "",
-  "---",
-  "",
-  "## Platform Context",
-  "",
-  "The following documents define the platform you are operating within.",
-  "Read them in full before making any triage decision.",
-  "",
-  "---",
-  "",
-  readContract("../contracts/platform/ARCHITECTURE.md"),
-  "",
-  "---",
-  "",
-  readContract("../contracts/policies/infrastructure.md"),
-  "",
-  "---",
-  "",
-  readContract("../contracts/platform/CODE_GENERATION.md"),
-  "",
-  "---",
-  "",
-  readContract("../contracts/platform/APPLICATION_CATALOG.md"),
-  "",
-  "---",
-  "",
-  readContract("../contracts/domain/PRIMITIVES.md"),
-  "",
-  "---",
-  "",
-  readContract("../contracts/domain/TRANSITIONS.md"),
-].join("\n");
+// The router system prompt is a standalone classification prompt — it does not
+// need the full platform context. Domain-specific planning is delegated to
+// downstream services (e.g., the codeinator's architect agent for coding tasks).
+const routerSystemPrompt = extractSystemPrompt(
+  "../contracts/agents/router_prompt.txt",
+);
 
 const conversationPipeline = new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
   lambdaCode: lambda.Code.fromAsset(__dirname),
   summarizerAgentSystemPrompt: summarizerSystemPrompt,
-  architectAgentSystemPrompt: architectSystemPrompt,
+  routerAgentSystemPrompt: routerSystemPrompt,
 });
 
 // Trigger the Step Function when conversation_waiting is emitted

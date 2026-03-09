@@ -46,10 +46,10 @@ And to `packages/pipeline-cdk/src/`:
 
 | Package | Description |
 |---------|-------------|
-| `@melodysdad/pm-models` | Domain types, Zod schemas, CloudEvent utilities (auto-generated) |
-| `@melodysdad/pm-pipeline-cdk` | CDK construct for conversation pipeline Step Function (auto-generated) |
-| `@melodysdad/pm-transition-handlers` | Base handler classes for Lambda functions (`TransitionHandler<T>`) |
-| `@melodysdad/pm-lambda-layer-utils` | Shared Lambda utilities (EventBridge publishing, error types) |
+| `@glennsbuilds/pm-models` | Domain types, Zod schemas, CloudEvent utilities (auto-generated) |
+| `@glennsbuilds/pm-pipeline-cdk` | CDK construct for conversation pipeline Step Function (auto-generated) |
+| `@glennsbuilds/pm-transition-handlers` | Base handler classes for Lambda functions (`TransitionHandler<T>`) |
+| `@glennsbuilds/pm-lambda-layer-utils` | Shared Lambda utilities (EventBridge publishing, error types) |
 
 All packages are published to GitHub Packages via semantic-release on push to `main`.
 

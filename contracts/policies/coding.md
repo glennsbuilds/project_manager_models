@@ -75,12 +75,12 @@ Do not deviate from these structures without approval.
 
 ### `sqs-lambda` and `api-gateway` — factory pattern
 
-Handler wiring is provided by `@melodysdad/pm-lambda-layer-utils`. The `handler.ts` file is
+Handler wiring is provided by `@glennsbuilds/pm-lambda-layer-utils`. The `handler.ts` file is
 a thin wiring file only — do not add logic to it.
 
 ```typescript
 // handler.ts (sqs-lambda)
-import { createSQSHandler } from '@melodysdad/pm-lambda-layer-utils';
+import { createSQSHandler } from '@glennsbuilds/pm-lambda-layer-utils';
 import { validateAndAuthorize } from './validateAndAuthorize';
 import { executeBusinessLogic } from './executeBusinessLogic';
 import { broadcastEvent } from './broadcastEvent';
@@ -92,7 +92,7 @@ module.exports = {
 
 ```typescript
 // handler.ts (api-gateway)
-import { createAPIGatewayWebhookHandler } from '@melodysdad/pm-lambda-layer-utils';
+import { createAPIGatewayWebhookHandler } from '@glennsbuilds/pm-lambda-layer-utils';
 import { executeBusinessLogic } from './executeBusinessLogic';
 import { broadcastEvent } from './broadcastEvent';
 
@@ -150,7 +150,7 @@ Key rules for Step Function handlers:
 - Use ES module named export: `export const handler = async ...`
 - Return the full output state — Step Functions chains on the return value
 - Use `@aws-sdk/*` directly (available in Lambda runtime)
-- Do **not** import from `@melodysdad/pm-lambda-layer-utils`
+- Do **not** import from `@glennsbuilds/pm-lambda-layer-utils`
 - Do **not** use `module.exports`
 
 ---
@@ -159,10 +159,10 @@ Key rules for Step Function handlers:
 
 ### `sqs-lambda` and `api-gateway`
 
-Import shared utilities from `@melodysdad/pm-lambda-layer-utils`:
+Import shared utilities from `@glennsbuilds/pm-lambda-layer-utils`:
 
 ```typescript
-import { publishCloudEvent, BusinessLogicInterface } from '@melodysdad/pm-lambda-layer-utils';
+import { publishCloudEvent, BusinessLogicInterface } from '@glennsbuilds/pm-lambda-layer-utils';
 ```
 
 Available exports:

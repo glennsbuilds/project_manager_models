@@ -1,5 +1,5 @@
 /**
- * @melodysdad/pm-models
+ * @glennsbuilds/pm-models
  *
  * Generated TypeScript types, schemas, and utilities for project manager domain models.
  * Auto-generated from contracts/ - do not edit manually.
@@ -11,8 +11,8 @@
  *
  * @example
  * ```typescript
- * import { Conversation, ConversationSchema } from '@melodysdad/pm-models';
- * import { CloudEvent, createCloudEvent } from '@melodysdad/pm-models';
+ * import { Conversation, ConversationSchema } from '@glennsbuilds/pm-models';
+ * import { CloudEvent, createCloudEvent } from '@glennsbuilds/pm-models';
  *
  * // Use types
  * const convo: Conversation = { ... };

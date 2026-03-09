@@ -1,5 +1,5 @@
 {
-  "name": "@melodysdad/pm-transition-handlers",
+  "name": "@glennsbuilds/pm-transition-handlers",
   "version": "1.0.2",
   "description": "Base handler classes and utilities for project manager transition events",
   "main": "dist/index.js",
@@ -33,6 +33,6 @@
     "zod": "^3.22.0"
   },
   "peerDependencies": {
-    "@melodysdad/pm-models": "^1.0.0"
+    "@glennsbuilds/pm-models": "^1.0.0"
   }
 }

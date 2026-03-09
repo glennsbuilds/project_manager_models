@@ -1,5 +1,5 @@
 {
-  "name": "@melodysdad/pm-pipeline-cdk",
+  "name": "@glennsbuilds/pm-pipeline-cdk",
   "version": "1.0.0",
   "type": "module",
   "description": "Generated CDK constructs for project manager pipelines (Step Functions, Lambda, agents)",

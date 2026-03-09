@@ -47,7 +47,7 @@ EventBridge rule → SQS queue → Lambda
 
 Example — `project_manager.message.added` event:
 ```typescript
-import { BusinessLogicInterface } from '@melodysdad/pm-lambda-layer-utils';
+import { BusinessLogicInterface } from '@glennsbuilds/pm-lambda-layer-utils';
 
 export interface ParsedInput extends BusinessLogicInterface {
   type: string;
@@ -117,7 +117,7 @@ Step Functions state machine → Lambda → (returns updated state object)
 | `samplePayloads` | Representative Step Functions state objects (one per significant branch) |
 
 **Note**: The generated handler uses `export const handler = async (event: HandlerInput): Promise<HandlerOutput>`.
-It uses `@aws-sdk/*` directly and does **not** import from `@melodysdad/pm-lambda-layer-utils`.
+It uses `@aws-sdk/*` directly and does **not** import from `@glennsbuilds/pm-lambda-layer-utils`.
 
 ---
 

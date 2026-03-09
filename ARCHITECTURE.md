@@ -40,26 +40,26 @@ The repo serves three purposes:
 │   └── generateStepFunction.ts      # Generates CDK Step Function construct
 │
 ├── packages/
-│   ├── models/                      # @melodysdad/pm-models (auto-generated)
+│   ├── models/                      # @glennsbuilds/pm-models (auto-generated)
 │   │   └── src/
 │   │       ├── types.ts             # TypeScript interfaces for all primitives
 │   │       ├── schemas.ts           # Zod validators + inferred types
 │   │       ├── cloudEvents.ts       # CloudEvent envelope, validators, typed creators
 │   │       └── index.ts             # Package entry point
 │   │
-│   ├── handlers/                    # @melodysdad/pm-transition-handlers (hand-written)
+│   ├── handlers/                    # @glennsbuilds/pm-transition-handlers (hand-written)
 │   │   └── src/
 │   │       ├── baseHandler.ts       # TransitionHandler<T> abstract class
 │   │       ├── githubWebhookHandler.ts # GitHub-specific handler base
 │   │       └── index.ts
 │   │
-│   ├── lambda-layer/               # @melodysdad/pm-lambda-layer-utils (hand-written)
+│   ├── lambda-layer/               # @glennsbuilds/pm-lambda-layer-utils (hand-written)
 │   │   └── src/
 │   │       ├── cloudEvents.ts       # publishCloudEvent() — EventBridge publishing with trace propagation
 │   │       ├── types.ts             # BusinessLogicInterface, HttpError
 │   │       └── index.ts
 │   │
-│   └── pipeline-cdk/               # @melodysdad/pm-pipeline-cdk (auto-generated)
+│   └── pipeline-cdk/               # @glennsbuilds/pm-pipeline-cdk (auto-generated)
 │       └── src/
 │           ├── conversationPipeline.ts  # CDK construct: Step Function + Lambdas
 │           └── index.ts
@@ -128,10 +128,23 @@ All four packages are published to GitHub Packages (`npm.pkg.github.com`) via se
 
 | Package | npm Name | Source | Purpose |
 |---------|----------|--------|---------|
-| `packages/models` | `@melodysdad/pm-models` | Auto-generated from contracts | Domain types, Zod schemas, CloudEvent utilities |
-| `packages/handlers` | `@melodysdad/pm-transition-handlers` | Hand-written | Base handler classes for Lambda functions |
-| `packages/lambda-layer` | `@melodysdad/pm-lambda-layer-utils` | Hand-written | Shared Lambda utilities (EventBridge publishing, error types) |
-| `packages/pipeline-cdk` | `@melodysdad/pm-pipeline-cdk` | Auto-generated from contracts | CDK construct for conversation pipeline (Step Function + Lambdas) |
+| `packages/models` | `@glennsbuilds/pm-models` | Auto-generated from contracts | Domain types, Zod schemas, CloudEvent utilities |
+| `packages/handlers` | `@glennsbuilds/pm-transition-handlers` | Hand-written | Base handler classes for Lambda functions |
+| `packages/lambda-layer` | `@glennsbuilds/pm-lambda-layer-utils` | Hand-written | Shared Lambda utilities (EventBridge publishing, error types) |
+| `packages/pipeline-cdk` | `@glennsbuilds/pm-pipeline-cdk` | Auto-generated from contracts | CDK construct for conversation pipeline (Step Function + Lambdas) |
+
+## Infrastructure
+
+This repo owns all CDK stacks for the platform:
+
+| Stack | Purpose |
+|-------|---------|
+| `ProjectManagerBaseInfra` | Shared EventBridge bus, DynamoDB table, SSM parameters |
+| `ProjectManagerParamsStack` | Bedrock model ID parameters for agents |
+| `ConversationPipelineStack` | Step Function + Lambda handlers for conversation orchestration |
+
+Deploy all stacks: `npx cdk deploy --all`
+Deploy a single stack: `npx cdk deploy ProjectManagerBaseInfra`
 
 ## System Overview
 
@@ -152,6 +165,31 @@ GitHub Webhook
                └─ CLOSE_CONVERSATION → persist checkpoint, notify user
 ```
 
+## Vision
+
+This platform is the **core dispatcher** for a broader system — not just a code generation pipeline. The long-term goal is a social network around creativity and community service, where communities organize around shared goals and build their own processes, rituals, celebrations, and commitment infrastructure.
+
+### Three-layer architecture
+
+1. **Social layer** — communities, members, shared goals, rituals, celebrations. The product people interact with.
+2. **Project orchestration** — decomposing goals into tasks, tracking progress, managing dependencies across human and automated work. Owns task classification (human vs AI) and cross-task state.
+3. **Executor layer** — specialized systems that carry out tasks. The code automation pipeline (codeinator) is the first executor; others will follow (event planning, communication, scheduling).
+
+### Why this repo is the core
+
+The infrastructure here — EventBridge bus, DynamoDB single table, conversation/checkpoint model, architect agent — is executor-agnostic by design. The prompts and the current executor (codeinator) are code-specific, but the dispatch pattern generalizes:
+
+- Architect decomposes a goal into tasks, each tagged with an executor type
+- `RouteOnDecision` dispatches to the right executor via EventBridge
+- Executors emit completion events; the orchestration layer tracks progress
+- Communities register their own executors through the service registry
+
+### Evolution path
+
+- **Now:** Architect triages → routes to codeinator (single executor, hardcoded)
+- **Next:** Architect output includes `executor` field → routing dispatches to codeinator or flags for human action
+- **Later:** Executor registry grows; communities define custom executors; multi-task projects track state across human and automated work
+
 ## Development Workflow
 
 1. **Edit contracts** in `contracts/domain/`, `contracts/services/`, or `contracts/policies/`
@@ -164,4 +202,4 @@ GitHub Webhook
 - Use [conventional commits](https://www.conventionalcommits.org/) — see [RELEASING.md](RELEASING.md)
 - Domain contracts (PRIMITIVES, TRANSITIONS) are the single source of truth for data models
 - Generated code in `packages/models/src/` and `packages/pipeline-cdk/src/` should never be hand-edited — regenerate instead
-- All services consume `@melodysdad/pm-models` for types and `@melodysdad/pm-lambda-layer-utils` for shared Lambda utilities
+- All services consume `@glennsbuilds/pm-models` for types and `@glennsbuilds/pm-lambda-layer-utils` for shared Lambda utilities

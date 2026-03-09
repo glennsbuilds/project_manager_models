@@ -17,11 +17,9 @@ module.exports.handler = async (event) => {
   const {
     conversation_id,
     actor_id,
-    decision,
     checkpoint_summary,
-    response_to_user,
-    tasks = [],
-    task_ids = [],
+    taskType,
+    summary,
   } = event;
 
   const eventBusName = process.env.EVENT_BUS_NAME;
@@ -32,7 +30,7 @@ module.exports.handler = async (event) => {
   const now = new Date().toISOString();
   const entries = [];
 
-  // Emit checkpoint.created (one event for the BEGIN_WORK decision)
+  // Emit checkpoint.created for the routing decision
   entries.push({
     Source: 'project-manager.conversation-pipeline',
     DetailType: 'project_manager.checkpoint.created',
@@ -44,51 +42,30 @@ module.exports.handler = async (event) => {
       datacontenttype: 'application/json',
       data: {
         conversation_id,
-        decision,
-        response_to_user,
+        decision: 'BEGIN_WORK',
         checkpoint_summary,
       },
     }),
     EventBusName: eventBusName,
   });
 
-  // Emit task.created for each persisted task
-  for (let i = 0; i < tasks.length; i++) {
-    const task = tasks[i];
-    const task_id = task_ids[i];
-
-    if (!task_id) {
-      console.warn(JSON.stringify({
-        timestamp: now,
-        level: 'warn',
-        operation: 'emitEvents',
-        message: `No task_id for task index ${i} — skipping task.created event`,
-        conversation_id,
-      }));
-      continue;
-    }
-
+  // Emit task.routed — downstream consumers filter on detail.data.taskType
+  // (e.g., codeinator filters on taskType == "coding")
+  if (taskType) {
     entries.push({
       Source: 'project-manager.conversation-pipeline',
-      DetailType: 'project_manager.task.created',
+      DetailType: 'project_manager.task.routed',
       Detail: JSON.stringify({
         specversion: '1.0',
         source: 'project-manager.conversation-pipeline',
-        type: 'project_manager.task.created',
+        type: 'project_manager.task.routed',
         time: now,
         datacontenttype: 'application/json',
         data: {
-          task_id,
           conversation_id,
           actor_id,
-          type: task.type,
-          templateType: task.templateType,
-          triggerName: task.triggerName,
-          webhookEvent: task.webhookEvent ?? '',
-          webhookAction: task.webhookAction ?? '',
-          behavioralContract: task.behavioralContract,
-          parsedInputSpec: task.parsedInputSpec,
-          samplePayloads: task.samplePayloads ?? [],
+          taskType,
+          summary,
         },
       }),
       EventBusName: eventBusName,
@@ -103,9 +80,9 @@ module.exports.handler = async (event) => {
     operation: 'emitEvents',
     status: 'published',
     conversation_id,
-    decision,
+    taskType,
     checkpoint_event_count: 1,
-    task_event_count: task_ids.filter(Boolean).length,
+    task_routed_event_count: taskType ? 1 : 0,
   }));
 
   return event;

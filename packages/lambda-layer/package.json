@@ -1,5 +1,5 @@
 {
-  "name": "@melodysdad/pm-lambda-layer-utils",
+  "name": "@glennsbuilds/pm-lambda-layer-utils",
   "version": "1.0.0",
   "description": "Shared utilities for Project Manager Lambda functions",
   "main": "dist/index.js",
