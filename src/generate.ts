@@ -16,12 +16,12 @@ function ensureDirectory(path: string) {
 }
 
 function generate() {
-  console.log("🔍 Parsing contracts/domain/PRIMITIVES.md...");
-  const { primitives } = parsePrimitives("contracts/domain/PRIMITIVES.md");
+  console.log("🔍 Parsing contracts/platform/domain/PRIMITIVES.md...");
+  const { primitives } = parsePrimitives("contracts/platform/domain/PRIMITIVES.md");
   console.log(`✓ Found ${primitives.length} primitives`);
 
-  console.log("🔍 Parsing contracts/domain/TRANSITIONS.md...");
-  const { transitions } = parseTransitions("contracts/domain/TRANSITIONS.md");
+  console.log("🔍 Parsing contracts/platform/domain/TRANSITIONS.md...");
+  const { transitions } = parseTransitions("contracts/platform/domain/TRANSITIONS.md");
   console.log(`✓ Found ${transitions.length} transitions (${transitions.filter((t) => !t.futureWork).length} implemented)`);
 
   console.log("\n📝 Generating TypeScript interfaces...");
@@ -45,8 +45,8 @@ function generate() {
   writeFileSync(cloudEventPath, cloudEventCode);
   console.log(`✓ Generated ${cloudEventPath}`);
 
-  console.log("\n🔍 Parsing contracts/services/conversation_pipeline.md...");
-  const pipeline = parsePipeline("contracts/services/conversation_pipeline.md");
+  console.log("\n🔍 Parsing contracts/project-manager/services/conversation_pipeline.md...");
+  const pipeline = parsePipeline("contracts/project-manager/services/conversation_pipeline.md");
   console.log(`✓ Found pipeline: ${pipeline.metadata.name} (${pipeline.steps.length} steps, ${pipeline.branches.length} branches)`);
 
   console.log("📝 Generating Step Function CDK construct...");
