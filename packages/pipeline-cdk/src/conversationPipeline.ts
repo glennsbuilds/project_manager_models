@@ -122,81 +122,98 @@ export class ConversationPipelineConstruct extends Construct {
       props.routerModelIdSsmPath ?? "/project-manager/router-model-id",
     );
 
+    // --- OTEL / ADOT ---
+    const adotLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      "ADOTLayer",
+      `arn:aws:lambda:${cdk.Stack.of(this).region}:901920570463:layer:aws-otel-nodejs-arm64-ver-1-30-1:1`,
+    );
+    const otelEnv = {
+      AWS_LAMBDA_EXEC_WRAPPER: "/opt/otel-handler",
+      OPENTELEMETRY_COLLECTOR_CONFIG_FILE: "/var/task/collector.yaml",
+    };
+    const layers = [adotLayer, ...(props.lambdaLayers ?? [])];
+
     // --- Lambda functions ---
 
     // Prepares the conversation context for the AI agents. Absorbs the logic originally planned for the conversation assembler service.
     this.assembleContextFn = new lambda.Function(this, "AssembleContextFunction", {
       runtime,
+      architecture: lambda.Architecture.ARM_64,
       memorySize,
       timeout: timeout,
       handler: "handlers/assembleContext.handler",
       code: props.lambdaCode,
-      layers: props.lambdaLayers,
+      layers,
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
+        ...otelEnv,
       },
-      tracing: lambda.Tracing.ACTIVE,
     });
 
     // Create a NEED_INFORMATION ConversationCheckpoint
     this.persistCheckpointFn = new lambda.Function(this, "PersistCheckpointFunction", {
       runtime,
+      architecture: lambda.Architecture.ARM_64,
       memorySize,
       timeout: timeout,
       handler: "handlers/persistCheckpoint.handler",
       code: props.lambdaCode,
-      layers: props.lambdaLayers,
+      layers,
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
+        ...otelEnv,
       },
-      tracing: lambda.Tracing.ACTIVE,
     });
 
     // Create a Message from the AI response
     this.persistMessageFn = new lambda.Function(this, "PersistMessageFunction", {
       runtime,
+      architecture: lambda.Architecture.ARM_64,
       memorySize,
       timeout: timeout,
       handler: "handlers/persistMessage.handler",
       code: props.lambdaCode,
-      layers: props.lambdaLayers,
+      layers,
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
+        ...otelEnv,
       },
-      tracing: lambda.Tracing.ACTIVE,
     });
 
     // Publish checkpoint.created event to EventBridge
     this.emitCheckpointEventFn = new lambda.Function(this, "EmitCheckpointEventFunction", {
       runtime,
+      architecture: lambda.Architecture.ARM_64,
       memorySize,
       timeout: timeout,
       handler: "handlers/emitCheckpointEvent.handler",
       code: props.lambdaCode,
-      layers: props.lambdaLayers,
+      layers,
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
+        ...otelEnv,
       },
-      tracing: lambda.Tracing.ACTIVE,
     });
 
     // Publish checkpoint.created and task.routed events
     this.emitEventsFn = new lambda.Function(this, "EmitEventsFunction", {
       runtime,
+      architecture: lambda.Architecture.ARM_64,
       memorySize,
       timeout: timeout,
       handler: "handlers/emitEvents.handler",
       code: props.lambdaCode,
-      layers: props.lambdaLayers,
+      layers,
       environment: {
         EVENT_BUS_NAME: eventBusNameParam,
         DYNAMODB_TABLE_NAME: dynamodbTableNameParam,
+        ...otelEnv,
       },
-      tracing: lambda.Tracing.ACTIVE,
     });
 
     // --- State machine definition ---

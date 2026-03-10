@@ -1,0 +1,26 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+exporters:
+  awsxray:
+    region: "us-east-1"
+  awsemf:
+    region: "us-east-1"
+    log_group_name: "/aws/lambda/metrics"
+    dimension_rollup_option: "NoDimensionRollup"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      # Processors removed as they are likely not in your layer
+      exporters: [awsxray]
+    metrics:
+      receivers: [otlp]
+      # Processors removed
+      exporters: [awsemf]

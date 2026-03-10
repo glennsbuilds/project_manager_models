@@ -6,6 +6,7 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as path from "path";
 import * as fs from "fs";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import {
   ConversationPipelineConstruct,
@@ -82,20 +83,58 @@ function extractSystemPrompt(filePath: string): string {
 }
 
 const summarizerSystemPrompt = extractSystemPrompt(
-  "../contracts/agents/summarizer_prompt.txt",
+  "../contracts/project-manager/agents/summarizer_prompt.txt",
 );
 
 // The router system prompt is a standalone classification prompt — it does not
 // need the full platform context. Domain-specific planning is delegated to
 // downstream services (e.g., the codeinator's architect agent for coding tasks).
 const routerSystemPrompt = extractSystemPrompt(
-  "../contracts/agents/router_prompt.txt",
+  "../contracts/project-manager/agents/router_prompt.txt",
 );
+
+const sharedLambdaDir = path.join(__dirname, "../../project_manager_lambda/shared/lambda");
+
+const utilsLayer = new lambda.LayerVersion(stack, "UtilsLayer", {
+  code: lambda.Code.fromAsset(sharedLambdaDir, {
+    bundling: {
+      local: {
+        tryBundle(outputDir: string): boolean {
+          try {
+            const nodeModulesOut = path.join(outputDir, "nodejs", "node_modules");
+            fs.mkdirSync(nodeModulesOut, { recursive: true });
+            for (const scope of ["@glennsbuilds", "@aws-sdk", "@aws", "@aws-crypto", "@smithy"]) {
+              if (fs.existsSync(path.join(sharedLambdaDir, "node_modules", scope))) {
+                execSync(`cp -r node_modules/${scope} "${nodeModulesOut}/"`, { cwd: sharedLambdaDir, stdio: "inherit" });
+              }
+            }
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      image: lambda.Runtime.NODEJS_22_X.bundlingImage,
+      command: [
+        "bash", "-c",
+        [
+          "cd /asset-input",
+          "npm install --production",
+          "mkdir -p /asset-output/nodejs/node_modules",
+          "for scope in @glennsbuilds @aws-sdk @aws @aws-crypto @smithy; do [ -d node_modules/$scope ] && cp -r node_modules/$scope /asset-output/nodejs/node_modules/; done",
+        ].join(" && "),
+      ],
+    },
+  }),
+  compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
+  description: "Shared utilities for Project Manager Lambda functions",
+});
 
 const conversationPipeline = new ConversationPipelineConstruct(stack, "ConversationPipeline", {
   dynamoTable: table,
   eventBus: bus,
   lambdaCode: lambda.Code.fromAsset(__dirname),
+  lambdaLayers: [utilsLayer],
   summarizerAgentSystemPrompt: summarizerSystemPrompt,
   routerAgentSystemPrompt: routerSystemPrompt,
 });
