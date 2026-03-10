@@ -103,11 +103,7 @@ const utilsLayer = new lambda.LayerVersion(stack, "UtilsLayer", {
           try {
             const nodeModulesOut = path.join(outputDir, "nodejs", "node_modules");
             fs.mkdirSync(nodeModulesOut, { recursive: true });
-            for (const scope of ["@glennsbuilds", "@aws-sdk", "@aws", "@aws-crypto", "@smithy"]) {
-              if (fs.existsSync(path.join(sharedLambdaDir, "node_modules", scope))) {
-                execSync(`cp -r node_modules/${scope} "${nodeModulesOut}/"`, { cwd: sharedLambdaDir, stdio: "inherit" });
-              }
-            }
+            execSync(`cp -r node_modules/@glennsbuilds "${nodeModulesOut}/"`, { cwd: sharedLambdaDir, stdio: "inherit" });
             return true;
           } catch {
             return false;
@@ -121,7 +117,7 @@ const utilsLayer = new lambda.LayerVersion(stack, "UtilsLayer", {
           "cd /asset-input",
           "npm install --production",
           "mkdir -p /asset-output/nodejs/node_modules",
-          "for scope in @glennsbuilds @aws-sdk @aws @aws-crypto @smithy; do [ -d node_modules/$scope ] && cp -r node_modules/$scope /asset-output/nodejs/node_modules/; done",
+          "cp -r node_modules/@glennsbuilds /asset-output/nodejs/node_modules/",
         ].join(" && "),
       ],
     },
